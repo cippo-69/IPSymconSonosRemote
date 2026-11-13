@@ -155,7 +155,7 @@ class SonosRemote extends IPSModuleStrict
         try {
             switch ($Ident) {
                 case 'refresh':
-                    $this->PushFull();
+                    $this->Flush();
                     break;
                 case 'importSonos':
                     $this->ImportSonos();

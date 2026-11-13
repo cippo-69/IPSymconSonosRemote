@@ -56,6 +56,8 @@
 
   .vol { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; }
   .vol .v { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sr-muted); font-size: 13px; }
+  .vol.wait { opacity: .45; }
+  input[type=range]:disabled { cursor: default; }
   input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: 26px; background: none; margin: 0; cursor: pointer; --p: 50%; }
   input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--sr-accent) var(--p), var(--sr-line) var(--p)); }
   input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--sr-line); }
@@ -208,6 +210,13 @@
   // Aktualisierungen während des Ziehens am Regler zurückhalten (höchstens 4 s, falls das Loslassen nicht ankommt)
   function dragging() { return Object.values(SR.drag).some((t) => t && Date.now() - t < 4000); }
   function flushPending() { if (SR.pending && !dragging()) { SR.pending = false; renderPickers(); renderNow(); renderDevices(); renderFavs(); } }
+  // Zustand selbst abfragen: nach dem Ein-/Ausschalten (2 min) und solange ein Gerät hochfährt
+  function schedulePoll() {
+    const starting = SR.state.devices.some((d) => d.power === true && !d.available && d.kind === 'sonos');
+    const want = starting || Date.now() < (SR.pollUntil || 0);
+    if (want && !SR.pollTimer) SR.pollTimer = setInterval(() => { send('refresh', {}); schedulePoll(); }, 5000);
+    if (!want && SR.pollTimer) { clearInterval(SR.pollTimer); SR.pollTimer = null; }
+  }
   function paintRange(r) { const min = +r.min, max = +r.max; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); }
   function stateText(d) {
     if (d.power === false) return T('off');
@@ -281,6 +290,9 @@
       }
       html += volumeRow(d);
       if (d.caps.power) html += `<button class="btn" data-power="1">${svg('power')}${T('Switch off')}</button>`;
+    } else {
+      html += volumeRow(d);
+      if (d.caps.power) html += `<button class="btn" data-power="1">${svg('power')}${T('Switch off')}</button>`;
     }
     setKeepingImages($('nowBox'), html + '</div>');
     bindControls($('nowBox'), d);
@@ -289,9 +301,10 @@
   }
 
   function volumeRow(d) {
-    if (d.volume === null || d.volume === undefined || !d.available) return '';
-    const m = d.muted === null || d.muted === undefined ? '' : `<button class="ib sm ${d.muted ? 'on' : ''}" data-mute="1">${svg(d.muted ? 'mute' : 'vol')}</button>`;
-    return `<div class="vol">${m || `<span class="ib sm">${svg('vol')}</span>`}<input type="range" min="0" max="100" step="1" value="${d.volume}" data-vol="1"><span class="v">${d.volume}%</span></div>`;
+    if (d.volume === null || d.volume === undefined || d.power === false) return '';
+    const dis = d.available ? '' : 'disabled';
+    const m = d.muted === null || d.muted === undefined ? '' : `<button class="ib sm ${d.muted ? 'on' : ''}" data-mute="1" ${dis}>${svg(d.muted ? 'mute' : 'vol')}</button>`;
+    return `<div class="vol ${dis ? 'wait' : ''}">${m || `<span class="ib sm">${svg('vol')}</span>`}<input type="range" min="0" max="100" step="1" value="${d.volume}" data-vol="1" ${dis}><span class="v">${d.volume}%</span></div>`;
   }
 
   function bindControls(root, d) {
@@ -303,6 +316,8 @@
       if (!on && d.master && !confirm(T('Switching off the master stops the group. The next selected device becomes master. Continue?'))) return;
       if (b.classList.contains('switch')) b.classList.toggle('on', on);   // sofortige Rückmeldung, Zustand kommt vom Modul
       send('power', { id: d.id, value: on });
+      SR.pollUntil = Date.now() + 120000;
+      schedulePoll();
     });
     root.querySelectorAll('[data-vol]').forEach((r) => {
       const lab = r.parentElement.querySelector('.v');
@@ -465,6 +480,7 @@
     switch (msg.type) {
       case 'full':
         SR.state = msg.state;
+        schedulePoll();
         { const keep = new Set(SR.state.devices.map((d) => String(d.image || '').slice(6))); Object.keys(SR.covers).forEach((h) => { if (!keep.has(h)) delete SR.covers[h]; }); }
         if (dragging()) { SR.pending = true; return; }   // Regler wird gerade bewegt – danach nachholen
         SR.pending = false;
