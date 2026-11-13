@@ -198,6 +198,13 @@
   function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(SR.tt); SR.tt = setTimeout(() => el.style.display = 'none', 3000); }
   function dev(id) { return SR.state.devices.find((d) => d.id === id); }
   function thumb(img, icon) { return `<div class="thumb">${img ? `<img src="${esc(img)}" loading="lazy" onerror="this.remove()">` : svg(icon)}</div>`; }
+  // Inhalt neu setzen, bereits geladene Bilder mit gleicher Quelle aber behalten (sonst flimmert das Cover bei jeder Aktualisierung)
+  function setKeepingImages(el, html) {
+    const old = {};
+    el.querySelectorAll('img').forEach((img) => { const k = img.getAttribute('src'); (old[k] = old[k] || []).push(img); });
+    el.innerHTML = html;
+    el.querySelectorAll('img').forEach((img) => { const keep = (old[img.getAttribute('src')] || []).shift(); if (keep) img.replaceWith(keep); });
+  }
   function paintRange(r) { const min = +r.min, max = +r.max; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); }
   function stateText(d) {
     if (d.power === false) return T('off');
@@ -272,7 +279,7 @@
       html += volumeRow(d);
       if (d.caps.power) html += `<button class="btn" data-power="1">${svg('power')}${T('Switch off')}</button>`;
     }
-    $('nowBox').innerHTML = html + '</div>';
+    setKeepingImages($('nowBox'), html + '</div>');
     bindControls($('nowBox'), d);
     const fn = $('nowBox').querySelector('[data-favnow]');
     if (fn) fn.onclick = () => send('favNow', { id: d.id });
@@ -306,7 +313,7 @@
     const list = SR.state.devices;
     if (!list.length) { $('devList').innerHTML = `<div class="empty">${T('No devices configured')}</div>`; return; }
     const master = dev(SR.state.groupMaster);
-    $('devList').innerHTML = list.map((d) => devHTML(d, master)).join('');
+    setKeepingImages($('devList'), list.map((d) => devHTML(d, master)).join(''));
     list.forEach((d) => bindDevice(d, master));
   }
   function devHTML(d, master) {
