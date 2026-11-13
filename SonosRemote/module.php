@@ -172,6 +172,9 @@ class SonosRemote extends IPSModuleStrict
                 case 'mute':
                     $this->Device($id)->SetMute((bool) ($v['value'] ?? false));
                     break;
+                case 'tone':
+                    $this->SetTone($id, (string) ($v['which'] ?? ''), (int) ($v['value'] ?? 0));
+                    break;
                 case 'power':
                     $this->SetPower($id, (bool) ($v['value'] ?? false));
                     break;
@@ -284,6 +287,20 @@ class SonosRemote extends IPSModuleStrict
         $this->WriteAttributeString('GroupSelection', json_encode($sel));
         $this->ApplyGroup();
         $this->PushFull();
+        return true;
+    }
+
+    /**
+     * Klang eines Sonos-Geräts: $Setting 'bass' / 'treble' (-10…10) oder 'loudness' (0/1).
+     * Nur möglich, wenn die Einstellung in der Sonos-Instanz freigeschaltet ist.
+     */
+    public function SetTone(string $Device, string $Setting, int $Value): bool
+    {
+        $dev = $this->Device($Device);
+        if (!$dev instanceof SonosDevice) {
+            throw new Exception($this->Translate('Only Sonos devices have sound settings'));
+        }
+        $dev->SetTone($Setting, $Value);
         return true;
     }
 

@@ -51,6 +51,12 @@
             "Open the login page and sign in to %s. The link is completed automatically.": "Anmeldeseite öffnen und bei %s anmelden. Die Verknüpfung wird danach automatisch abgeschlossen.",
             "Code: %s": "Code: %s",
             "Podcasts": "Podcasts",
+            "Sound": "Klang",
+            "Bass": "Bässe",
+            "Treble": "Höhen",
+            "Loudness": "Loudness",
+            "on": "an",
+            "Only Sonos devices have sound settings": "Nur Sonos-Geräte haben Klangeinstellungen",
 
             "%s is switching on – Sonos needs about a minute": "%s wird eingeschaltet – Sonos braucht ca. eine Minute",
             "Only Sonos devices can be grouped": "Nur Sonos-Geräte können gruppiert werden",

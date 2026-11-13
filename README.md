@@ -28,6 +28,8 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
   vom Dienst; ohne Suchbegriff zeigt die Kachel die Startebene des Dienstes (z. B. „Meine Musik“). Interpreten und
   Ordner lassen sich öffnen, Alben/Playlists/Titel abspielen und als Favorit speichern.
 - **Internetradio (TuneIn):** Sendersuche und Rubriken (Lokale Sender, Musik, …) ohne Konto.
+- **Klang je Sonos-Gerät:** Bässe, Höhen und Loudness als Auswahl in der Geräteansicht – sofern in der Sonos-Instanz
+  „Tiefen-“, „Höhen-“ bzw. „Loudness-Steuerung“ eingeschaltet ist.
 - **Andere Geräte (nicht Sonos):** jede Instanz oder reine Variablen – An/Aus, Lautstärke, Stumm, Wiedergabe, Titel.
   Sie werden nicht gruppiert und spielen keine Favoriten ab (Kennzeichnung „extern“).
 
@@ -65,6 +67,7 @@ und „Mute-Steuerung“, wenn der Stumm-Knopf erscheinen soll.
 SNR_PlayFavorite($id, 'radio', 3, '12345');  // Art, Platz 1–20, Instanz-ID des Geräts ('' = erstes eingeschaltetes Sonos-Gerät)
 SNR_SetPower($id, '12345', true);           // Gerät ein/aus
 SNR_SelectForGroup($id, '23456', true);     // Gerät für die Gruppe auswählen/abwählen (das erste ausgewählte wird Master)
+SNR_SetTone($id, '12345', 'bass', 3);       // Klang: 'bass'/'treble' -10…10, 'loudness' 0/1 (wenn in der Sonos-Instanz freigeschaltet)
 SNR_GetFavorites($id);                      // JSON aller Favoriten
 ```
 

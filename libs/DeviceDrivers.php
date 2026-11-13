@@ -421,7 +421,60 @@ class SonosDevice extends SNRBaseDevice
         foreach (['Status', 'Volume', 'Mute', 'MemberOfGroup', 'nowPlaying', 'Title', 'Artist', 'CoverURL'] as $ident) {
             $ids[] = $this->Ident($ident);
         }
+        foreach (array_keys(self::TONE) as $which) {
+            $ids[] = $this->ToneVar($which);
+        }
         return array_values(array_filter($ids));
+    }
+
+    /** Klangeinstellungen: Ident in der Sonos-Instanz bzw. Variablenname (falls der Ident abweicht) */
+    private const TONE = [
+        'bass'     => [['Bass'], ['Tiefen', 'Bässe', 'Bass']],
+        'treble'   => [['Treble'], ['Höhen', 'Treble']],
+        'loudness' => [['Loudness'], ['Loudness']]
+    ];
+
+    /** Variable einer Klangeinstellung (0 = in der Instanz nicht freigeschaltet) */
+    private function ToneVar(string $Which): int
+    {
+        if (!isset(self::TONE[$Which]) || $this->instance <= 0) {
+            return 0;
+        }
+        [$idents, $names] = self::TONE[$Which];
+        foreach ($idents as $ident) {
+            $vid = $this->Ident($ident);
+            if ($vid > 0) {
+                return $vid;
+            }
+        }
+        foreach (IPS_GetChildrenIDs($this->instance) as $cid) {
+            if (IPS_VariableExists($cid) && in_array(IPS_GetName($cid), $names, true)) {
+                return $cid;
+            }
+        }
+        return 0;
+    }
+
+    /** Werte der freigeschalteten Klangeinstellungen: bass/treble -10…10, loudness bool; null = keine */
+    private function Tone(): ?array
+    {
+        $out = [];
+        foreach (array_keys(self::TONE) as $which) {
+            $vid = $this->ToneVar($which);
+            if ($vid > 0) {
+                $out[$which] = $which === 'loudness' ? self::ToBool(GetValue($vid)) : (int) GetValue($vid);
+            }
+        }
+        return $out ?: null;
+    }
+
+    public function SetTone(string $Which, int $Value): void
+    {
+        $vid = $this->ToneVar($Which);
+        if ($vid === 0) {
+            throw new Exception($this->Name() . ': ' . $Which . ' ist in der Sonos-Instanz nicht freigeschaltet');
+        }
+        self::WriteVar($vid, $Which === 'loudness' ? $Value !== 0 : max(-10, min(10, $Value)));
     }
 
     public function Capabilities(): array
@@ -460,6 +513,7 @@ class SonosDevice extends SNRBaseDevice
         $s['volume'] = $vv > 0 ? (int) round((float) GetValue($vv)) : (int) $this->Value('Volume', 0);
         $mv = $this->MuteVar();
         $s['muted'] = $mv > 0 ? self::ToBool(GetValue($mv)) : null;
+        $s['tone'] = $this->Tone();
         $title = (string) $this->Value('Title', '', $coord);
         $s['title'] = $title !== '' ? $title : (string) $this->Value('nowPlaying', '', $coord);
         $s['artist'] = (string) $this->Value('Artist', '', $coord);
