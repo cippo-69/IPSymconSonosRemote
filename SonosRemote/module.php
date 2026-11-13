@@ -49,6 +49,9 @@ class SonosRemote extends IPSModuleStrict
 
         $this->RegisterTimer('Flush', 0, 'SNR_Flush($_IPS[\'TARGET\']);');
         $this->RegisterTimer('LinkPoll', 0, 'SNR_LinkPoll($_IPS[\'TARGET\']);');
+        // solange ein Sonos-Gerät hochfährt, regelmäßig nachsehen (bis es erreichbar ist)
+        $this->RegisterTimer('Startup', 0, 'SNR_Flush($_IPS[\'TARGET\']);');
+        $this->RegisterAttributeString('WatchedInst', '[]');
 
         $this->SetVisualizationType(1);
     }
@@ -70,6 +73,18 @@ class SonosRemote extends IPSModuleStrict
             }
         }
         $this->WriteAttributeString('Watched', json_encode($watch));
+        // Statuswechsel der Sonos-Instanzen (nach dem Einschalten wird der Player erst nach ca. einer Minute aktiv)
+        foreach ((array) json_decode($this->ReadAttributeString('WatchedInst'), true) as $iid) {
+            $this->UnregisterMessage((int) $iid, IM_CHANGESTATUS);
+        }
+        $inst = [];
+        foreach ($this->Devices() as $dev) {
+            if ($dev instanceof SonosDevice && $dev->InstanceID() > 0 && !in_array($dev->InstanceID(), $inst, true)) {
+                $this->RegisterMessage($dev->InstanceID(), IM_CHANGESTATUS);
+                $inst[] = $dev->InstanceID();
+            }
+        }
+        $this->WriteAttributeString('WatchedInst', json_encode($inst));
         $this->SetStatus(IS_ACTIVE);
         $this->RememberMasterStatus();
         $this->PushFull();
@@ -96,6 +111,10 @@ class SonosRemote extends IPSModuleStrict
 
     public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
     {
+        if ($Message === IM_CHANGESTATUS) {
+            $this->SetTimerInterval('Flush', 300);
+            return;
+        }
         if ($Message !== VM_UPDATE) {
             return;
         }
@@ -115,7 +134,11 @@ class SonosRemote extends IPSModuleStrict
         $this->SetTimerInterval('Flush', 0);
         if (count($this->Selection()) > 0) {
             // ausgewählte Geräte, die gerade hochgefahren sind, nachträglich in die Gruppe holen (bzw. Master werden)
-            $this->ApplyGroup();
+            try {
+                $this->ApplyGroup();
+            } catch (Throwable $e) {
+                $this->SendDebug('Gruppe', $e->getMessage(), 0);
+            }
         }
         $this->PushFull();
     }
@@ -507,6 +530,9 @@ class SonosRemote extends IPSModuleStrict
             }
         }
         $this->ResolveCovers($list, $devs);
+        // eingeschaltet, aber noch nicht erreichbar: alle 10 s neu prüfen
+        $starting = count(array_filter($list, fn ($s) => ($s['kind'] ?? '') === 'sonos' && ($s['power'] ?? null) === true && empty($s['available'])));
+        $this->SetTimerInterval('Startup', $starting > 0 ? 10000 : 0);
         // Gruppen aus MemberOfGroup der Sonos-Instanzen ableiten
         foreach ($list as $key => $s) {
             $m = (int) ($s['memberOf'] ?? 0);

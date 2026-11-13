@@ -205,6 +205,9 @@
     el.innerHTML = html;
     el.querySelectorAll('img').forEach((img) => { const keep = (old[img.getAttribute('src')] || []).shift(); if (keep) img.replaceWith(keep); });
   }
+  // Aktualisierungen während des Ziehens am Regler zurückhalten (höchstens 4 s, falls das Loslassen nicht ankommt)
+  function dragging() { return Object.values(SR.drag).some((t) => t && Date.now() - t < 4000); }
+  function flushPending() { if (SR.pending && !dragging()) { SR.pending = false; renderPickers(); renderNow(); renderDevices(); renderFavs(); } }
   function paintRange(r) { const min = +r.min, max = +r.max; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); }
   function stateText(d) {
     if (d.power === false) return T('off');
@@ -298,13 +301,16 @@
       e.stopPropagation();
       const on = d.power === false;
       if (!on && d.master && !confirm(T('Switching off the master stops the group. The next selected device becomes master. Continue?'))) return;
+      if (b.classList.contains('switch')) b.classList.toggle('on', on);   // sofortige Rückmeldung, Zustand kommt vom Modul
       send('power', { id: d.id, value: on });
     });
     root.querySelectorAll('[data-vol]').forEach((r) => {
       const lab = r.parentElement.querySelector('.v');
       paintRange(r);
-      r.oninput = () => { SR.drag[d.id] = true; lab.textContent = r.value + '%'; paintRange(r); };
-      r.onchange = () => { SR.drag[d.id] = false; send('volume', { id: d.id, value: parseInt(r.value, 10) }); };
+      r.oninput = () => { SR.drag[d.id] = Date.now(); lab.textContent = r.value + '%'; paintRange(r); };
+      r.onchange = () => { SR.drag[d.id] = 0; send('volume', { id: d.id, value: parseInt(r.value, 10) }); flushPending(); };
+      // Ziehen endet ohne „change“ (z. B. Touch): Sperre trotzdem lösen
+      r.onpointerup = r.ontouchend = r.onpointercancel = () => setTimeout(() => { if (SR.drag[d.id]) { SR.drag[d.id] = 0; flushPending(); } }, 400);
     });
   }
 
@@ -460,7 +466,8 @@
       case 'full':
         SR.state = msg.state;
         { const keep = new Set(SR.state.devices.map((d) => String(d.image || '').slice(6))); Object.keys(SR.covers).forEach((h) => { if (!keep.has(h)) delete SR.covers[h]; }); }
-        if (Object.values(SR.drag).some(Boolean)) return;   // Regler wird gerade bewegt
+        if (dragging()) { SR.pending = true; return; }   // Regler wird gerade bewegt – danach nachholen
+        SR.pending = false;
         renderPickers(); renderNow(); renderDevices(); renderFavs();
         { const sig = JSON.stringify(msg.state.services || []); if (!$('srcChips').innerHTML || sig !== SR.svcSig) { SR.svcSig = sig; renderLibChrome(); } }
         break;
