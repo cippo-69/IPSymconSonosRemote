@@ -578,6 +578,26 @@ class SonosDevice extends SNRBaseDevice
         $this->UPnP($coord)->PlayItem($Item, (string) IPS_GetProperty($coord, 'RINCON'));
     }
 
+    /** Titel einzeln in die Warteschlange (Ersatzweg, wenn ein Album/eine Playlist des Dienstes nicht als Ganzes geht) */
+    public function PlayTracks(array $Items): void
+    {
+        if (!$this->Available()) {
+            throw new Exception($this->Name() . ' ist ausgeschaltet');
+        }
+        $coord = $this->Coordinator();
+        $this->UPnP($coord)->PlayTracks($Items, (string) IPS_GetProperty($coord, 'RINCON'));
+    }
+
+    /** Kennung für Musikdienste; ersatzweise aus der MAC-Adresse in der RINCON gebildet */
+    public function ServiceDeviceId(): string
+    {
+        $id = $this->UPnP()->DeviceSerial();
+        if ($id === '' && preg_match('~^RINCON_([0-9A-F]{12})~i', (string) IPS_GetProperty($this->instance, 'RINCON'), $m)) {
+            $id = strtoupper(implode('-', str_split($m[1], 2))) . ':0';
+        }
+        return $id;
+    }
+
     /**
      * Aktuelle Wiedergabe als Favoriteneintrag (Radio = Sender, sonst aktueller Titel).
      */

@@ -127,6 +127,78 @@
             "type": "Button",
             "caption": "Refresh tile",
             "onClick": "IPS_RequestAction($id, 'refresh', '{}');"
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Music services (search in the tile)",
+            "items": [
+                {
+                    "type": "Label",
+                    "caption": "Link the music services you want to search in the tile (e.g. Qobuz, Amazon Music). The service must also be set up in the Sonos app. Radio via TuneIn works without linking. ★ = used in your Sonos favorites, ✓ = linked."
+                },
+                {
+                    "type": "Select",
+                    "name": "LinkService",
+                    "caption": "Music service",
+                    "width": "420px",
+                    "value": 0,
+                    "options": [
+                        { "caption": "-", "value": 0 }
+                    ]
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Button",
+                            "caption": "Load services from Sonos",
+                            "onClick": "IPS_RequestAction($id, 'loadServices', '{}');"
+                        },
+                        {
+                            "type": "Button",
+                            "caption": "Link service",
+                            "onClick": "IPS_RequestAction($id, 'linkStart', $LinkService);"
+                        },
+                        {
+                            "type": "Button",
+                            "caption": "Remove link",
+                            "onClick": "IPS_RequestAction($id, 'unlink', $LinkService);"
+                        }
+                    ]
+                },
+                {
+                    "type": "Label",
+                    "name": "LinkInfo",
+                    "caption": ""
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "LinkUrl",
+                    "caption": "Login page",
+                    "width": "700px",
+                    "visible": false
+                },
+                {
+                    "type": "Button",
+                    "name": "LinkOpen",
+                    "caption": "Open login page",
+                    "link": true,
+                    "visible": false,
+                    "onClick": "echo SNR_GetLinkUrl($id);"
+                },
+                {
+                    "type": "List",
+                    "name": "LinkedServices",
+                    "caption": "Linked services",
+                    "rowCount": 4,
+                    "columns": [
+                        { "caption": "Service", "name": "Name", "width": "auto" },
+                        { "caption": "Login", "name": "Auth", "width": "120px" },
+                        { "caption": "Sonos account", "name": "Account", "width": "130px" }
+                    ],
+                    "values": []
+                }
+            ]
         }
     ]
 }

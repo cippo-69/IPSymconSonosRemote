@@ -10,6 +10,9 @@ class SonosUPnP
 {
     private const AVT = ['/MediaRenderer/AVTransport/Control', 'urn:schemas-upnp-org:service:AVTransport:1'];
     private const CD = ['/MediaServer/ContentDirectory/Control', 'urn:schemas-upnp-org:service:ContentDirectory:1'];
+    private const MS = ['/MusicServices/Control', 'urn:schemas-upnp-org:service:MusicServices:1'];
+    private const DP = ['/DeviceProperties/Control', 'urn:schemas-upnp-org:service:DeviceProperties:1'];
+    private const SP = ['/SystemProperties/Control', 'urn:schemas-upnp-org:service:SystemProperties:1'];
 
     private const DIDL_HEAD = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">';
 
@@ -51,14 +54,14 @@ class SonosUPnP
         $this->call(self::AVT, 'RemoveAllTracksFromQueue', [new SoapParam('0', 'InstanceID')]);
     }
 
-    public function AddToQueue(string $Uri, string $Meta = ''): void
+    public function AddToQueue(string $Uri, string $Meta = '', bool $AsNext = true): void
     {
         $this->call(self::AVT, 'AddURIToQueue', [
             new SoapParam('0', 'InstanceID'),
             new SoapParam(htmlspecialchars($Uri), 'EnqueuedURI'),
             new SoapParam($Meta, 'EnqueuedURIMetaData'),
             new SoapParam('0', 'DesiredFirstTrackNumberEnqueued'),
-            new SoapParam('1', 'EnqueueAsNext')
+            new SoapParam($AsNext ? '1' : '0', 'EnqueueAsNext')
         ]);
     }
 
@@ -93,6 +96,66 @@ class SonosUPnP
             $this->SetAVTransportURI('x-rincon-queue:' . $Rincon . '#0');
         }
         $this->Play();
+    }
+
+    /**
+     * Mehrere Titel der Reihe nach in die geleerte Warteschlange und abspielen
+     * @param array $Items [['uri' => …, 'meta' => …]]
+     */
+    public function PlayTracks(array $Items, string $Rincon): void
+    {
+        $this->ClearQueue();
+        foreach ($Items as $it) {
+            $this->AddToQueue((string) $it['uri'], (string) ($it['meta'] ?? ''), false);
+        }
+        $this->SetAVTransportURI('x-rincon-queue:' . $Rincon . '#0');
+        $this->Play();
+    }
+
+    // ---------- Musikdienste ----------
+
+    /**
+     * Auf der Anlage verfügbare Musikdienste: [[sid, name, uri, auth, pm]]
+     */
+    public function MusicServices(): array
+    {
+        $res = (array) $this->call(self::MS, 'ListAvailableServices', []);
+        $xml = (string) ($res['AvailableServiceDescriptorList'] ?? '');
+        $doc = new DOMDocument();
+        if ($xml === '' || !@$doc->loadXML($xml)) {
+            return [];
+        }
+        $out = [];
+        foreach ($doc->getElementsByTagName('Service') as $s) {
+            /** @var DOMElement $s */
+            $policy = $s->getElementsByTagName('Policy')->item(0);
+            $pm = $s->getElementsByTagName('PresentationMap')->item(0);
+            $out[] = [
+                'sid'  => (int) $s->getAttribute('Id'),
+                'name' => $s->getAttribute('Name'),
+                'uri'  => $s->getAttribute('SecureUri') ?: $s->getAttribute('Uri'),
+                'auth' => $policy instanceof DOMElement ? $policy->getAttribute('Auth') : 'Anonymous',
+                'pm'   => $pm instanceof DOMElement ? $pm->getAttribute('Uri') : ''
+            ];
+        }
+        return $out;
+    }
+
+    public function HouseholdID(): string
+    {
+        $r = $this->call(self::DP, 'GetHouseholdID', []);
+        return is_scalar($r) ? (string) $r : (string) (((array) $r)['CurrentHouseholdID'] ?? '');
+    }
+
+    /** Geräte-Kennung für Musikdienste (wie die Sonos-App); leer, wenn nicht verfügbar */
+    public function DeviceSerial(): string
+    {
+        try {
+            $r = $this->call(self::SP, 'GetString', [new SoapParam('R_TrialZPSerial', 'VariableName')]);
+            return is_scalar($r) ? (string) $r : (string) (((array) $r)['StringValue'] ?? '');
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
     public static function IsStream(string $Uri): bool

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../libs/DeviceDrivers.php';
+require_once __DIR__ . '/../libs/SonosSMAPI.php';
 
 /**
  * Sonos-Kachel (HTML-SDK)
@@ -40,7 +41,14 @@ class SonosRemote extends IPSModuleStrict
         $this->RegisterAttributeString('GroupSelection', '[]'); // für die Gruppe ausgewählte Geräte
         $this->RegisterAttributeString('Coupled', '[]');        // gekoppelte Nicht-Sonos-Geräte
 
+        // Musikdienste (Sonos Music API)
+        $this->RegisterAttributeString('Services', '{}');    // verknüpfte Dienste: sid => name, uri, auth, token, key, cats
+        $this->RegisterAttributeString('ServiceList', '[]'); // auf der Anlage verfügbare Dienste (Zwischenspeicher)
+        $this->RegisterAttributeString('Accounts', '{}');    // gelernt aus Favoriten/Warteschlange: sid => sn, desc, Titel-Schema
+        $this->RegisterAttributeString('SmapiIds', '{}');    // Geräte- und Haushalts-Kennung für die Dienste
+
         $this->RegisterTimer('Flush', 0, 'SNR_Flush($_IPS[\'TARGET\']);');
+        $this->RegisterTimer('LinkPoll', 0, 'SNR_LinkPoll($_IPS[\'TARGET\']);');
 
         $this->SetVisualizationType(1);
     }
@@ -105,7 +113,9 @@ class SonosRemote extends IPSModuleStrict
      */
     public function RequestAction(string $Ident, mixed $Value): void
     {
-        $v = is_string($Value) ? (json_decode($Value, true) ?? []) : (array) $Value;
+        $v = is_string($Value) ? json_decode($Value, true) : $Value;
+        $num = is_numeric($Value) ? (int) $Value : 0;   // Aufrufe aus dem Konfigurationsformular (Dienst-ID)
+        $v = is_array($v) ? $v : [];
         $id = (string) ($v['id'] ?? '');
         try {
             switch ($Ident) {
@@ -147,7 +157,21 @@ class SonosRemote extends IPSModuleStrict
                     }
                     break;
                 case 'browse':
-                    $this->Browse((string) ($v['source'] ?? 'fv'), (string) ($v['query'] ?? ''));
+                    $src = (string) ($v['source'] ?? 'fv');
+                    if ($src === 'tunein' || str_starts_with($src, 'svc:')) {
+                        $this->BrowseService($src, (string) ($v['query'] ?? ''), (string) ($v['cat'] ?? ''), (int) ($v['open'] ?? -1), !empty($v['back']));
+                    } else {
+                        $this->Browse($src, (string) ($v['query'] ?? ''));
+                    }
+                    break;
+                case 'loadServices':
+                    $this->LoadServices();
+                    break;
+                case 'linkStart':
+                    $this->LinkStart($num ?: (int) ($v['sid'] ?? 0));
+                    break;
+                case 'unlink':
+                    $this->Unlink($num ?: (int) ($v['sid'] ?? 0));
                     break;
                 case 'favAddBrowse':
                     $item = $this->BrowseItem((int) ($v['idx'] ?? -1));
@@ -174,7 +198,25 @@ class SonosRemote extends IPSModuleStrict
         } catch (Throwable $e) {
             $this->SendDebug($Ident, $e->getMessage(), 0);
             $this->Toast($e->getMessage());
+            if (in_array($Ident, ['loadServices', 'linkStart', 'unlink'], true)) {
+                echo $e->getMessage();   // Meldung im Konfigurationsformular
+            }
         }
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
+        self::SetFormField($form['actions'], 'LinkService', 'options', $this->ServiceOptions());
+        self::SetFormField($form['actions'], 'LinkedServices', 'values', $this->LinkedRows());
+        $pending = json_decode($this->GetBuffer('Link'), true);
+        if (is_array($pending)) {
+            self::SetFormField($form['actions'], 'LinkInfo', 'caption', (string) ($pending['info'] ?? ''));
+            self::SetFormField($form['actions'], 'LinkUrl', 'value', (string) $pending['url']);
+            self::SetFormField($form['actions'], 'LinkUrl', 'visible', true);
+            self::SetFormField($form['actions'], 'LinkOpen', 'visible', true);
+        }
+        return json_encode($form);
     }
 
     // ---------- öffentliche Befehle (SNR_*) ----------
@@ -270,6 +312,41 @@ class SonosRemote extends IPSModuleStrict
     public function GetFavorites(): string
     {
         return json_encode($this->Favorites());
+    }
+
+    /** Anmeldeseite der laufenden Verknüpfung (für den Knopf im Konfigurationsformular) */
+    public function GetLinkUrl(): string
+    {
+        $p = json_decode($this->GetBuffer('Link'), true);
+        return is_array($p) ? (string) $p['url'] : '';
+    }
+
+    /** Timer: prüft, ob die Anmeldung beim Musikdienst abgeschlossen ist */
+    public function LinkPoll(): void
+    {
+        $p = json_decode($this->GetBuffer('Link'), true);
+        if (!is_array($p)) {
+            $this->SetTimerInterval('LinkPoll', 0);
+            return;
+        }
+        $svc = $this->AvailableService((int) $p['sid']);
+        if ($svc === null || time() > (int) $p['until']) {
+            $this->LinkDone($this->Translate('Linking timed out – please start again'));
+            return;
+        }
+        $ids = $this->SmapiIds();
+        try {
+            $token = (new SonosSMAPI($svc, $ids['device'], $ids['household']))->FinishLink((string) $p['code'], (string) $p['devId']);
+        } catch (Throwable $e) {
+            $this->SendDebug('LinkPoll', $e->getMessage(), 0);
+            $this->LinkDone($e->getMessage());
+            return;
+        }
+        if ($token === null) {
+            return;   // noch nicht angemeldet
+        }
+        $this->SaveLinkedService($svc, $token['token'], $token['key']);
+        $this->LinkDone(sprintf($this->Translate('%s is linked'), $svc['name']));
     }
 
     // ---------- Geräte ----------
@@ -466,7 +543,8 @@ class SonosRemote extends IPSModuleStrict
         return [
             'devices'  => array_values($list),
             'hasSonos' => count(array_filter($devs, fn ($d) => $d instanceof SonosDevice)) > 0,
-            'favs'     => $this->PublicFavorites()
+            'favs'     => $this->PublicFavorites(),
+            'services' => $this->PublicServices()
         ];
     }
 
@@ -501,7 +579,21 @@ class SonosRemote extends IPSModuleStrict
         if (!$dev->Capabilities()['media']) {
             throw new Exception(sprintf($this->Translate('%s cannot play favorites'), $dev instanceof SNRBaseDevice ? $dev->Name() : $Device));
         }
-        $dev->PlayItem($Item);
+        try {
+            $dev->PlayItem($Item);
+        } catch (Throwable $e) {
+            // Album/Playlist eines Musikdienstes, das sich nicht als Ganzes einreihen lässt: Titel einzeln
+            $s = $Item['smapi'] ?? null;
+            if (!is_array($s) || !$dev instanceof SonosDevice || in_array($s['kind'] ?? '', ['track', 'stream', 'program'], true)) {
+                throw $e;
+            }
+            $this->SendDebug('PlayOn', 'als Ganzes fehlgeschlagen, Titel einzeln: ' . $e->getMessage(), 0);
+            $tracks = $this->ServiceTracks((int) $s['sid'], (string) $s['id']);
+            if (!$tracks) {
+                throw $e;
+            }
+            $dev->PlayTracks($tracks);
+        }
         $this->Toast(sprintf($this->Translate('Playing %s'), (string) ($Item['name'] ?? '')));
         return true;
     }
@@ -582,6 +674,339 @@ class SonosRemote extends IPSModuleStrict
         return is_array($items[$Idx] ?? null) ? $items[$Idx] : null;
     }
 
+    // ---------- Musikdienste (Sonos Music API) und TuneIn ----------
+
+    /**
+     * Suchen und Durchblättern in einem Musikdienst ('svc:<sid>') oder TuneIn ('tunein').
+     * Ohne Suchbegriff wird die Startebene des Dienstes gezeigt; geöffnete Ordner liegen auf einem Stapel (Zurück).
+     */
+    private function BrowseService(string $Source, string $Query, string $Cat, int $Open, bool $Back): void
+    {
+        $nav = json_decode($this->GetBuffer('Nav'), true);
+        if (!is_array($nav) || ($nav['source'] ?? '') !== $Source || ($Open < 0 && !$Back)) {
+            $nav = ['source' => $Source, 'query' => trim($Query), 'cat' => $Cat, 'stack' => []];
+        }
+        if ($Open >= 0) {
+            $it = $this->BrowseItem($Open);
+            if ($it && ($it['ref'] ?? '') !== '') {
+                $nav['stack'][] = ['ref' => $it['ref'], 'title' => $it['name']];
+            }
+        }
+        if ($Back) {
+            array_pop($nav['stack']);
+        }
+        $this->SetBuffer('Nav', json_encode($nav));
+        $top = $nav['stack'] ? $nav['stack'][count($nav['stack']) - 1] : null;
+        $limit = max(10, min(100, $this->ReadPropertyInteger('BrowseLimit')));
+        $this->EnsureLearned();
+        $items = [];
+
+        if ($Source === 'tunein') {
+            $sid = (int) ($this->Accounts()['tunein'] ?? SonosMedia::TUNEIN_SID);
+            if ($top) {
+                $res = TuneIn::Browse((string) $top['ref']);
+            } elseif ($nav['query'] !== '') {
+                $res = TuneIn::Search($nav['query']);
+            } else {
+                $res = TuneIn::Browse();
+            }
+            foreach ($res['items'] as $r) {
+                $e = ['name' => $r['title'], 'sub' => $r['sub'], 'image' => $r['image'], 'type' => 'radio', 'uri' => '', 'meta' => '', 'ref' => $r['url'], 'open' => $r['open']];
+                if ($r['play']) {
+                    [$e['uri'], $e['meta']] = SonosMedia::TuneIn($r['id'], $r['title'], $sid);
+                }
+                $items[] = $e;
+            }
+        } else {
+            $sid = (int) substr($Source, 4);
+            $client = $this->Client($sid);
+            try {
+                if ($top) {
+                    $res = $client->Metadata((string) $top['ref'], 0, $limit);
+                } elseif ($nav['query'] !== '') {
+                    $cat = $nav['cat'] !== '' ? $nav['cat'] : (string) ($this->LinkedServices()[$sid]['cats'][0]['id'] ?? 'tracks');
+                    $res = $client->Search($cat, $nav['query'], 0, $limit);
+                } else {
+                    $res = $client->Metadata('root', 0, $limit);
+                }
+            } finally {
+                $this->SaveRefreshed($sid, $client);
+            }
+            $acc = (array) ($this->Accounts()[$sid] ?? []);
+            foreach ($res['items'] as $r) {
+                $e = ['name' => $r['title'], 'sub' => $r['sub'], 'image' => $r['image'], 'type' => SonosMedia::FavType($r['kind']), 'uri' => '', 'meta' => '', 'ref' => $r['open'] ? $r['id'] : '', 'open' => $r['open']];
+                if ($r['play'] && $r['id'] !== '') {
+                    [$e['uri'], $e['meta']] = SonosMedia::Build($r, $sid, $acc);
+                    $e['smapi'] = ['sid' => $sid, 'id' => $r['id'], 'kind' => $r['kind']];
+                }
+                $items[] = $e;
+            }
+        }
+
+        $this->SetBuffer('Browse', json_encode($items));
+        $public = [];
+        foreach ($items as $i => $it) {
+            $public[] = ['idx' => $i, 'name' => $it['name'], 'sub' => $it['sub'], 'image' => $it['image'], 'type' => $it['type'], 'uri' => $it['uri'], 'play' => $it['uri'] !== '', 'open' => (bool) $it['open']];
+        }
+        $this->UpdateVisualizationValue(json_encode([
+            'type'   => 'browse',
+            'source' => $Source,
+            'query'  => $nav['query'],
+            'total'  => $res['total'],
+            'items'  => $public,
+            'path'   => array_column($nav['stack'], 'title'),
+            'back'   => count($nav['stack']) > 0
+        ]));
+    }
+
+    /** Titel eines Albums/einer Playlist (bis 100, eine Ordnerebene tiefer bei Interpreten) */
+    private function ServiceTracks(int $Sid, string $Id): array
+    {
+        $client = $this->Client($Sid);
+        $acc = (array) ($this->Accounts()[$Sid] ?? []);
+        $out = [];
+        $todo = [$Id];
+        $visited = 0;
+        try {
+            while ($todo && count($out) < 100 && $visited < 12) {
+                $res = $client->Metadata(array_shift($todo), 0, 100);
+                $visited++;
+                foreach ($res['items'] as $r) {
+                    if ($r['kind'] === 'track') {
+                        [$u, $m] = SonosMedia::Build($r, $Sid, $acc);
+                        $out[] = ['uri' => $u, 'meta' => $m];
+                        if (count($out) >= 100) {
+                            break;
+                        }
+                    } elseif ($r['open'] && in_array($r['kind'], ['album', 'playlist', 'container'], true)) {
+                        $todo[] = $r['id'];
+                    }
+                }
+            }
+        } finally {
+            $this->SaveRefreshed($Sid, $client);
+        }
+        return $out;
+    }
+
+    private function Client(int $Sid): SonosSMAPI
+    {
+        $s = $this->LinkedServices()[$Sid] ?? null;
+        if (!is_array($s)) {
+            throw new Exception($this->Translate('The music service is not linked – link it in the instance configuration'));
+        }
+        $ids = $this->SmapiIds();
+        return new SonosSMAPI($s, $ids['device'], $ids['household']);
+    }
+
+    /** vom Dienst erneuerte Zugangsdaten übernehmen */
+    private function SaveRefreshed(int $Sid, SonosSMAPI $Client): void
+    {
+        if ($Client->Refreshed === null) {
+            return;
+        }
+        $all = $this->LinkedServices();
+        if (isset($all[$Sid])) {
+            $all[$Sid]['token'] = $Client->Refreshed['token'];
+            $all[$Sid]['key'] = $Client->Refreshed['key'];
+            $this->WriteAttributeString('Services', json_encode($all));
+        }
+    }
+
+    private function LinkedServices(): array
+    {
+        return (array) json_decode($this->ReadAttributeString('Services'), true);
+    }
+
+    private function Accounts(): array
+    {
+        return (array) json_decode($this->ReadAttributeString('Accounts'), true);
+    }
+
+    private function AvailableService(int $Sid): ?array
+    {
+        foreach ((array) json_decode($this->ReadAttributeString('ServiceList'), true) as $s) {
+            if ((int) ($s['sid'] ?? 0) === $Sid) {
+                return $s;
+            }
+        }
+        return null;
+    }
+
+    /** Geräte- und Haushalts-Kennung einmal vom Sonos-Player holen */
+    private function SmapiIds(): array
+    {
+        $ids = (array) json_decode($this->ReadAttributeString('SmapiIds'), true);
+        if (($ids['device'] ?? '') === '' || ($ids['household'] ?? '') === '') {
+            $dev = $this->BrowseDevice();
+            $ids = ['device' => $dev->ServiceDeviceId(), 'household' => $dev->UPnP()->HouseholdID()];
+            if ($ids['household'] === '') {
+                throw new Exception('Sonos: Haushalts-Kennung nicht verfügbar');
+            }
+            $this->WriteAttributeString('SmapiIds', json_encode($ids));
+        }
+        return $ids;
+    }
+
+    /** Konto-Angaben je Dienst aus Sonos-Favoriten und Warteschlange lernen (einmal je Laufzeit bzw. auf Anforderung) */
+    private function EnsureLearned(bool $Force = false): void
+    {
+        if (!$Force && $this->GetBuffer('Learned') === '1') {
+            return;
+        }
+        try {
+            $u = $this->BrowseDevice()->UPnP();
+        } catch (Throwable $e) {
+            return;
+        }
+        $entries = [];
+        foreach (['FV:2', 'Q:0'] as $obj) {
+            try {
+                foreach ($u->Browse($obj, 200)['items'] as $it) {
+                    $entries[] = ['uri' => $it['uri'], 'meta' => $it['resMD']];
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('Lernen ' . $obj, $e->getMessage(), 0);
+            }
+        }
+        $this->WriteAttributeString('Accounts', json_encode(SonosMedia::Learn($entries, $this->Accounts())));
+        $this->SetBuffer('Learned', '1');
+    }
+
+    private function LoadServices(): void
+    {
+        $list = $this->BrowseDevice()->UPnP()->MusicServices();
+        $this->EnsureLearned(true);
+        $acc = $this->Accounts();
+        // in der Anlage genutzte Dienste zuerst, dann alphabetisch
+        usort($list, function ($a, $b) use ($acc) {
+            $ua = isset($acc[$a['sid']]) ? 0 : 1;
+            $ub = isset($acc[$b['sid']]) ? 0 : 1;
+            return $ua <=> $ub ?: strcasecmp($a['name'], $b['name']);
+        });
+        $this->WriteAttributeString('ServiceList', json_encode($list));
+        $this->UpdateFormField('LinkService', 'options', json_encode($this->ServiceOptions()));
+        echo sprintf($this->Translate('%d music services found'), count($list));
+    }
+
+    private function LinkStart(int $Sid): void
+    {
+        $svc = $this->AvailableService($Sid);
+        if ($svc === null) {
+            throw new Exception($this->Translate('Load the music services first and select one'));
+        }
+        if ($svc['auth'] === 'Anonymous') {
+            $this->SaveLinkedService($svc, '', '');
+            $this->LinkDone(sprintf($this->Translate('%s is linked'), $svc['name']));
+            return;
+        }
+        if (!in_array($svc['auth'], ['AppLink', 'DeviceLink'], true)) {
+            throw new Exception(sprintf($this->Translate('%s uses the login type %s, which is not supported'), $svc['name'], $svc['auth']));
+        }
+        $ids = $this->SmapiIds();
+        $link = (new SonosSMAPI($svc, $ids['device'], $ids['household']))->BeginLink();
+        $info = sprintf($this->Translate('Open the login page and sign in to %s. The link is completed automatically.'), $svc['name']);
+        if ($link['show'] && $link['code'] !== '') {
+            $info .= ' ' . sprintf($this->Translate('Code: %s'), $link['code']);
+        }
+        $this->SetBuffer('Link', json_encode(['sid' => $Sid, 'code' => $link['code'], 'devId' => $link['devId'], 'url' => $link['url'], 'info' => $info, 'until' => time() + 600]));
+        $this->SetTimerInterval('LinkPoll', 5000);
+        $this->UpdateFormField('LinkInfo', 'caption', $info);
+        $this->UpdateFormField('LinkUrl', 'value', $link['url']);
+        $this->UpdateFormField('LinkUrl', 'visible', true);
+        $this->UpdateFormField('LinkOpen', 'visible', true);
+    }
+
+    private function SaveLinkedService(array $Svc, string $Token, string $Key): void
+    {
+        $all = $this->LinkedServices();
+        $all[(int) $Svc['sid']] = [
+            'sid'   => (int) $Svc['sid'],
+            'name'  => $Svc['name'],
+            'uri'   => $Svc['uri'],
+            'auth'  => $Svc['auth'],
+            'token' => $Token,
+            'key'   => $Key,
+            'cats'  => SonosSMAPI::Categories((string) ($Svc['pm'] ?? ''))
+        ];
+        $this->WriteAttributeString('Services', json_encode($all));
+        $this->EnsureLearned(true);
+        $this->PushFull();
+    }
+
+    private function LinkDone(string $Info): void
+    {
+        $this->SetTimerInterval('LinkPoll', 0);
+        $this->SetBuffer('Link', '');
+        $this->UpdateFormField('LinkInfo', 'caption', $Info);
+        $this->UpdateFormField('LinkUrl', 'visible', false);
+        $this->UpdateFormField('LinkOpen', 'visible', false);
+        $this->UpdateFormField('LinkedServices', 'values', json_encode($this->LinkedRows()));
+        $this->UpdateFormField('LinkService', 'options', json_encode($this->ServiceOptions()));
+    }
+
+    private function Unlink(int $Sid): void
+    {
+        $all = $this->LinkedServices();
+        unset($all[$Sid]);
+        $this->WriteAttributeString('Services', json_encode($all));
+        $this->LinkDone('');
+        $this->PushFull();
+    }
+
+    private function ServiceOptions(): array
+    {
+        $linked = $this->LinkedServices();
+        $acc = $this->Accounts();
+        $opts = [['caption' => '-', 'value' => 0]];
+        foreach ((array) json_decode($this->ReadAttributeString('ServiceList'), true) as $s) {
+            $cap = $s['name'];
+            if (isset($linked[$s['sid']])) {
+                $cap .= ' ✓';
+            } elseif (isset($acc[$s['sid']])) {
+                $cap .= ' ★';
+            }
+            $opts[] = ['caption' => $cap, 'value' => (int) $s['sid']];
+        }
+        return $opts;
+    }
+
+    private function LinkedRows(): array
+    {
+        $acc = $this->Accounts();
+        $rows = [];
+        foreach ($this->LinkedServices() as $sid => $s) {
+            $rows[] = ['Name' => $s['name'] . ' (' . $sid . ')', 'Auth' => $s['auth'], 'Account' => (string) ($acc[$sid]['sn'] ?? '–')];
+        }
+        return $rows;
+    }
+
+    /** Quellen für die Kachel: TuneIn und die verknüpften Dienste mit ihren Suchkategorien */
+    private function PublicServices(): array
+    {
+        $out = [['key' => 'tunein', 'name' => 'TuneIn', 'cats' => []]];
+        foreach ($this->LinkedServices() as $sid => $s) {
+            $out[] = ['key' => 'svc:' . $sid, 'name' => $s['name'], 'cats' => array_map(fn ($c) => ['id' => $c['id'], 'type' => $c['type'], 'label' => $c['label']], (array) ($s['cats'] ?? []))];
+        }
+        return $out;
+    }
+
+    private static function SetFormField(array &$Elements, string $Name, string $Key, mixed $Value): void
+    {
+        foreach ($Elements as &$e) {
+            if (!is_array($e)) {
+                continue;
+            }
+            if (($e['name'] ?? '') === $Name) {
+                $e[$Key] = $Value;
+            }
+            if (isset($e['items']) && is_array($e['items'])) {
+                self::SetFormField($e['items'], $Name, $Key, $Value);
+            }
+        }
+        unset($e);
+    }
+
     // ---------- Favoriten: je Art 20 Plätze ----------
 
     private function Favorites(): array
@@ -637,6 +1062,9 @@ class SonosRemote extends IPSModuleStrict
             'sub'   => mb_substr(trim((string) ($Item['sub'] ?? '')), 0, 80),
             'image' => (string) ($Item['image'] ?? '')
         ];
+        if (is_array($Item['smapi'] ?? null)) {
+            $favs[$Type][$slot]['smapi'] = $Item['smapi'];
+        }
         $this->SaveFavorites($favs);
         $this->Toast(sprintf($this->Translate('Saved to slot %d'), $slot + 1));
     }

@@ -104,6 +104,11 @@
   .switch:disabled { opacity: .4; cursor: default; }
   .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--sr-accent); color: #fff; margin-left: 6px; vertical-align: 1px; }
   .badge.f { background: var(--sr-bg2); color: inherit; }
+  .crumb { display: flex; align-items: center; gap: 6px; margin: 0 -6px 4px; padding: 4px 6px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 13px; }
+  .crumb:hover { background: var(--sr-bg); }
+  .crumb svg { font-size: 18px; flex: none; }
+  .crumb span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chips.sub .chip { padding: 4px 10px; font-size: 12px; }
   .empty { color: var(--sr-muted); padding: 24px 8px; text-align: center; }
   #toast { position: absolute; left: 50%; bottom: calc(var(--sr-nav) + 10px); transform: translateX(-50%); background: rgba(30,30,30,.92); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px; display: none; z-index: 9; max-width: 92%; text-align: center; }
 
@@ -130,6 +135,7 @@
 
   <div class="view" id="v-lib">
     <div class="chips" id="srcChips"></div>
+    <div class="chips sub" id="catChips"></div>
     <div class="search">
       <svg viewBox="0 0 24 24"><path d="M9.5 3a6.5 6.5 0 0 1 5.2 10.4l5.4 5.4-1.4 1.4-5.4-5.4A6.5 6.5 0 1 1 9.5 3zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/></svg>
       <input id="q" type="search" placeholder="Filter or search …" autocomplete="off" enterkeyhint="search">
@@ -154,7 +160,7 @@
 </div>
 
 <script>
-  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', saveAs: '', drag: {}, browse: null };
+  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', cat: {}, saveAs: '', drag: {}, browse: null };
   const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums' };
   const SOURCES = { fv: 'Sonos favorites', sq: 'Sonos playlists', radio: 'Radio', artist: 'Artists', album: 'Albums', track: 'Tracks' };
   const P = {
@@ -175,7 +181,10 @@
     speaker: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z',
     person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z',
     album: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 14.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9zm0-5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
-    list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z'
+    list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
+    open: 'M8.6 16.6 13.2 12 8.6 7.4 10 6l6 6-6 6z',
+    back: 'M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2z',
+    folder: 'M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z'
   };
   const ICON = { playlist: 'list', radio: 'radio', track: 'note', artist: 'person', album: 'album' };
   const svg = (k) => `<svg viewBox="0 0 24 24"><path d="${P[k]}"/></svg>`;
@@ -381,39 +390,57 @@
   function isFav(type, uri) { return favList(type).some((f) => f && f.uri === uri); }
 
   // ---------- Bibliothek ----------
+  // Quellen: Sonos-Anlage (feste Liste) + TuneIn + verknüpfte Musikdienste (svc:<sid>)
+  function services() { return SR.state.services || []; }
+  function service(key) { return services().find((x) => x.key === key); }
   function renderLibChrome() {
-    $('srcChips').innerHTML = Object.keys(SOURCES).map((s) => `<button class="chip ${SR.source === s ? 'on' : ''}" data-s="${s}">${T(SOURCES[s])}</button>`).join('');
+    const chips = Object.keys(SOURCES).map((s) => [s, T(SOURCES[s])]).concat(services().map((x) => [x.key, x.name]));
+    if (!chips.some(([k]) => k === SR.source)) SR.source = 'fv';
+    $('srcChips').innerHTML = chips.map(([k, n]) => `<button class="chip ${SR.source === k ? 'on' : ''}" data-s="${esc(k)}">${esc(n)}</button>`).join('');
     $('srcChips').querySelectorAll('.chip').forEach((c) => c.onclick = () => { SR.source = c.dataset.s; renderLibChrome(); doBrowse(); });
+    // Suchkategorien des Musikdienstes
+    const svc = service(SR.source);
+    const cats = svc ? svc.cats || [] : [];
+    if (cats.length && !cats.some((c) => c.id === SR.cat[SR.source])) SR.cat[SR.source] = cats[0].id;
+    $('catChips').innerHTML = cats.map((c) => `<button class="chip ${SR.cat[SR.source] === c.id ? 'on' : ''}" data-c="${esc(c.id)}">${esc(T(c.label))}</button>`).join('');
+    $('catChips').style.display = cats.length ? '' : 'none';
+    $('catChips').querySelectorAll('.chip').forEach((c) => c.onclick = () => { SR.cat[SR.source] = c.dataset.c; renderLibChrome(); if ($('q').value.trim()) doBrowse(); });
     $('saveAs').innerHTML = `<option value="">${T('Automatic')}</option>` + Object.keys(TYPES).map((t) => `<option value="${t}" ${SR.saveAs === t ? 'selected' : ''}>${T(TYPES[t])}</option>`).join('');
   }
   $('saveAs').addEventListener('change', (e) => { SR.saveAs = e.target.value; });
-  function doBrowse() {
+  function doBrowse(extra) {
     if (!SR.state.hasSonos) { $('results').innerHTML = `<div class="empty">${T('No Sonos device configured')}</div>`; return; }
     $('q').blur();
     $('results').innerHTML = `<div class="empty">${T('Loading …')}</div>`;
-    send('browse', { source: SR.source, query: $('q').value.trim() });
+    send('browse', Object.assign({ source: SR.source, query: $('q').value.trim(), cat: SR.cat[SR.source] || '' }, extra || {}));
   }
-  $('qbtn').onclick = doBrowse;
+  $('qbtn').onclick = () => doBrowse();
   $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doBrowse(); } });
   function renderBrowse(msg) {
     SR.browse = msg;
     if (msg.source !== SR.source) return;
     const items = msg.items || [];
     let html = '';
-    if (!items.length) html = `<div class="empty">${T(['artist', 'album', 'track'].includes(msg.source) && !msg.query ? 'Enter a search term' : 'No entries')}</div>`;
+    if (msg.back) html += `<div class="crumb" data-back="1">${svg('back')}<span>${esc((msg.path || []).join(' › '))}</span></div>`;
+    if (!items.length) html += `<div class="empty">${T(['artist', 'album', 'track'].includes(msg.source) && !msg.query ? 'Enter a search term' : 'No entries')}</div>`;
     items.forEach((it) => {
-      const fav = isFav(SR.saveAs || it.type, it.uri);
-      html += `<div class="item" data-idx="${it.idx}">${thumb(it.image, ICON[it.type] || 'note')}<div class="txt"><div class="n">${esc(it.name)}</div><div class="s">${esc(it.sub)}</div></div>
-        <span class="tag">${T(TYPES[it.type] || it.type)}</span>
-        <button class="ib sm ${fav ? 'on' : ''}" data-fav="${it.idx}" title="${T('Save as favorite')}">${svg(fav ? 'star' : 'starO')}</button><button class="ib sm">${svg('play')}</button></div>`;
+      const canPlay = it.play !== undefined ? it.play : true;
+      const fav = canPlay && isFav(SR.saveAs || it.type, it.uri);
+      const icon = it.open && !canPlay ? 'folder' : (ICON[it.type] || 'note');
+      html += `<div class="item" data-idx="${it.idx}" data-act="${it.open ? 'open' : 'play'}">${thumb(it.image, icon)}<div class="txt"><div class="n">${esc(it.name)}</div><div class="s">${esc(it.sub)}</div></div>
+        ${canPlay ? `<span class="tag">${T(TYPES[it.type] || it.type)}</span>
+        <button class="ib sm ${fav ? 'on' : ''}" data-fav="${it.idx}" title="${T('Save as favorite')}">${svg(fav ? 'star' : 'starO')}</button><button class="ib sm" data-play="${it.idx}">${svg('play')}</button>` : ''}
+        ${it.open ? `<button class="ib sm" data-open="${it.idx}">${svg('open')}</button>` : ''}</div>`;
     });
     if (msg.total > items.length && items.length) html += `<div class="hint" style="padding:8px">${items.length} / ${msg.total} – ${T('narrow down with the search')}</div>`;
     $('results').innerHTML = html;
+    const bk = $('results').querySelector('[data-back]');
+    if (bk) bk.onclick = () => doBrowse({ back: true });
+    const play = (idx) => { const id = target(); if (!id) return; send('playBrowse', { idx, id }); toast(T('Starting …')); };
     $('results').querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send('favAddBrowse', { idx: +b.dataset.fav, type: SR.saveAs }); });
+    $('results').querySelectorAll('[data-play]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); play(+b.dataset.play); });
     $('results').querySelectorAll('.item').forEach((el) => el.onclick = () => {
-      const id = target(); if (!id) return;
-      send('playBrowse', { idx: +el.dataset.idx, id });
-      toast(T('Starting …'));
+      if (el.dataset.act === 'open') doBrowse({ open: +el.dataset.idx }); else play(+el.dataset.idx);
     });
   }
 
@@ -427,7 +454,7 @@
         SR.state = msg.state;
         if (Object.values(SR.drag).some(Boolean)) return;   // Regler wird gerade bewegt
         renderPickers(); renderNow(); renderDevices(); renderFavs();
-        if (!$('srcChips').innerHTML) renderLibChrome();
+        { const sig = JSON.stringify(msg.state.services || []); if (!$('srcChips').innerHTML || sig !== SR.svcSig) { SR.svcSig = sig; renderLibChrome(); } }
         break;
       case 'favs':
         SR.state.favs = msg.favs;

@@ -4,7 +4,7 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
 [tkugelberg/Sonos](https://github.com/tkugelberg/Sonos). Aufbau und Bedienung wie die Kachel aus
 [IPSymconMusicAssistant](https://github.com/cippo-69/IPSymconMusicAssistant).
 
-> Status: 0.1 – noch nicht auf einem Symcon-System getestet.
+> Status: 0.2 – noch nicht auf einem Symcon-System getestet.
 
 ## Funktionen
 - **Geräteauswahl per Pulldown** (Jetzt läuft, Favoriten, Bibliothek – die Auswahl gilt überall).
@@ -22,6 +22,11 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
   Speichern per Stern in der Bibliothek oder bei „Jetzt läuft“ (aktueller Sender bzw. Titel).
 - **Bibliothek:** Sonos-Favoriten, Sonos-Playlists, Radio (Meine Sender), lokale Musikbibliothek (Interpreten, Alben,
   Titel mit Suche). „Speichern als“ legt die Favoritenart fest (Automatisch = aus der Sonos-Klasse).
+- **Suche in Musikdiensten (Qobuz, Amazon Music, Spotify, Deezer, Tidal …):** Die Kachel sucht direkt im Dienst –
+  über dieselbe Schnittstelle wie die Sonos-App (Sonos Music API). Kategorien (Titel, Alben, Interpreten, Playlists) kommen
+  vom Dienst; ohne Suchbegriff zeigt die Kachel die Startebene des Dienstes (z. B. „Meine Musik“). Interpreten und
+  Ordner lassen sich öffnen, Alben/Playlists/Titel abspielen und als Favorit speichern.
+- **Internetradio (TuneIn):** Sendersuche und Rubriken (Lokale Sender, Musik, …) ohne Konto.
 - **Andere Geräte (nicht Sonos):** jede Instanz oder reine Variablen – An/Aus, Lautstärke, Stumm, Wiedergabe, Titel.
   Sie werden nicht gruppiert und spielen keine Favoriten ab (Kennzeichnung „extern“).
 
@@ -39,6 +44,17 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
    automatisch gesucht (Ident bzw. Profil `~Volume`, `Mute`, `~Playback…`, `~Song`, `~Artist`, `Power`/`State`);
    die optionalen Spalten überschreiben die Suche.
 6. Kachel in der Visualisierung platzieren.
+
+### Musikdienste verknüpfen
+1. In der Sonos-App den Dienst einrichten (falls noch nicht geschehen) und am besten einen Favoriten daraus anlegen –
+   daraus lernt das Modul die Sonos-Kontonummer und das URI-Schema des Dienstes.
+2. Instanz → „Musikdienste (Suche in der Kachel)“ → „Dienste von Sonos laden“. ★ markiert Dienste, die in den Sonos-Favoriten
+   vorkommen.
+3. Dienst wählen → „Dienst verknüpfen“ → „Anmeldeseite öffnen“ und beim Dienst anmelden. Die Verknüpfung wird danach
+   automatisch abgeschlossen (bis 10 Minuten). Der Dienst erscheint dann als Quelle in der Bibliothek der Kachel.
+
+Die Anmeldung gilt für die Kachel; abgespielt wird über das Konto, das in der Sonos-Anlage hinterlegt ist.
+Unterstützt sind Dienste mit Anmeldeart AppLink/DeviceLink (die meisten aktuellen) und anonyme Dienste.
 
 Empfehlung für das Sonos-Modul: in den Player-Instanzen „Detaillierte Informationen“ einschalten (Titel, Interpret, Cover)
 und „Mute-Steuerung“, wenn der Stumm-Knopf erscheinen soll.
@@ -71,6 +87,10 @@ welche Bedienelemente die Kachel zeigt; mit `media = true` erscheint das Gerät 
   bis dahin steht es auf „startet oder nicht erreichbar“.
 - Gespeicherte Titel von Streamingdiensten („Jetzt läuft“ → Stern) lassen sich nicht bei jedem Dienst wieder abspielen.
   Zuverlässiger: im Sonos-App zu „Meine Sonos“ hinzufügen und über Bibliothek → Sonos-Favoriten speichern.
+- Musikdienste: Lässt sich ein Album oder eine Playlist nicht als Ganzes einreihen, holt das Modul die Titel einzeln
+  (bis 100). Klappt das Abspielen eines Dienstes gar nicht, fehlt meist ein Sonos-Favorit dieses Dienstes als Vorlage
+  (siehe „Musikdienste verknüpfen“, Schritt 1) – danach „Dienste von Sonos laden“ erneut klicken.
+- Amazon Music ist ungewöhnlich streng; ob Suche und Wiedergabe mit dem eigenen Konto gehen, muss vor Ort getestet werden.
 - Cover-Bilder lokaler Musik kommen direkt vom Sonos-Gerät (`http://<ip>:1400/…`) und sind nur im lokalen Netz sichtbar.
 
 ## Lizenz
