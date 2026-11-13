@@ -464,6 +464,9 @@ class SonosDevice extends SNRBaseDevice
         $s['title'] = $title !== '' ? $title : (string) $this->Value('nowPlaying', '', $coord);
         $s['artist'] = (string) $this->Value('Artist', '', $coord);
         $s['image'] = (string) $this->Value('CoverURL', '', $coord);
+        // Schlüssel für das Cover: ändert sich mit dem Titel bzw. Sender (Bild selbst lädt das Modul nur bei Änderung)
+        $s['coverKey'] = $coord . '|' . $s['title'] . '|' . $s['artist'] . '|' . $s['image'] . '|' . (string) $this->Value('nowPlaying', '', $coord);
+        $s['coordinator'] = $coord;
         $s['instance'] = $this->instance;
         $s['memberOf'] = $this->MemberOf();
         return $s;
@@ -601,6 +604,34 @@ class SonosDevice extends SNRBaseDevice
     /**
      * Aktuelle Wiedergabe als Favoriteneintrag (Radio = Sender, sonst aktueller Titel).
      */
+    /**
+     * Adresse des Covers bzw. Senderlogos der laufenden Wiedergabe – direkt vom Player (unabhängig von der Variable CoverURL).
+     */
+    public function CoverUrl(): string
+    {
+        $coord = $this->Coordinator();
+        $u = $this->UPnP($coord);
+        $var = trim((string) $this->Value('CoverURL', '', $coord));
+        if ($var !== '') {
+            return $u->ArtUrl($var);
+        }
+        $pos = $u->GetPositionInfo();
+        $img = (string) ($u->ParseDidl((string) ($pos['TrackMetaData'] ?? ''))[0]['image'] ?? '');
+        if ($img !== '') {
+            return $img;
+        }
+        $media = $u->GetMediaInfo();
+        $img = (string) ($u->ParseDidl((string) ($media['CurrentURIMetaData'] ?? ''))[0]['image'] ?? '');
+        if ($img !== '') {
+            return $img;
+        }
+        // TuneIn-Sender: Logo über die Sender-ID
+        if (preg_match('~x-sonosapi-stream:(s\d+)~i', (string) ($media['CurrentURI'] ?? '') . ' ' . (string) ($pos['TrackURI'] ?? ''), $m)) {
+            return 'https://cdn-profiles.tunein.com/' . $m[1] . '/images/logoq.png';
+        }
+        return '';
+    }
+
     public function NowPlayingItem(): ?array
     {
         $coord = $this->Coordinator();

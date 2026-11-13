@@ -1,7 +1,7 @@
 {
     "translations": {
         "de": {
-            "Tile for the tile visualization: device selection, power, one group via Master switch, favorites and the Sonos library.": "Kachel für die Kachel-Visualisierung: Geräteauswahl, Ein/Aus, eine Gruppe über den Master-Schalter, Favoriten und die Sonos-Bibliothek.",
+            "Tile for the tile visualization: device selection, power, one group (the first selected device is master), favorites and the Sonos library.": "Kachel für die Kachel-Visualisierung: Geräteauswahl, Ein/Aus, eine Gruppe (das zuerst ausgewählte Gerät ist Master), Favoriten und die Sonos-Bibliothek.",
             "Devices": "Geräte",
             "Instance (Sonos player or other device)": "Instanz (Sonos Player oder anderes Gerät)",
             "Name (optional)": "Name (optional)",
@@ -11,7 +11,7 @@
             "Playback (optional, other devices)": "Wiedergabe (optional, andere Geräte)",
             "Title (optional, other devices)": "Titel (optional, andere Geräte)",
             "Sonos players come from the Sonos module (tkugelberg/Sonos). Leave the power switch empty for devices that are always on.": "Sonos Player kommen aus dem Sonos-Modul (tkugelberg/Sonos). Bei dauerhaft eingeschalteten Geräten den Schaltaktor leer lassen.",
-            "Group: select the devices with the switch „Group“ in the tile, then switch on „Master“. Sonos devices play in sync. Other devices are coupled: they are switched on, set to the input above and follow play/pause/stop of the master.": "Gruppe: in der Kachel die Geräte mit dem Schalter „Gruppe“ auswählen, dann „Master“ einschalten. Sonos-Geräte spielen synchron. Andere Geräte werden gekoppelt: Sie werden eingeschaltet, auf den Eingang oben gestellt und folgen Play/Pause/Stopp des Masters.",
+            "Group: select the devices with the switch „Group“ in the tile. The first selected Sonos device becomes master, Sonos devices play in sync with it. Other devices are coupled: they are switched on, set to the input above and follow play/pause/stop of the master.": "Gruppe: in der Kachel die Geräte mit dem Schalter „Gruppe“ auswählen. Das zuerst ausgewählte Sonos-Gerät wird Master, Sonos-Geräte spielen synchron mit ihm. Andere Geräte werden gekoppelt: Sie werden eingeschaltet, auf den Eingang oben gestellt und folgen Play/Pause/Stopp des Masters.",
             "Input for group (optional, other devices)": "Eingang für die Gruppe (optional, andere Geräte)",
             "Input value": "Wert des Eingangs",
             "Only a Sonos device can be master": "Nur ein Sonos-Gerät kann Master sein",
@@ -90,7 +90,11 @@
             "Power": "Ein/Aus",
             "Switch on": "Einschalten",
             "Switch off": "Ausschalten",
-            "Switching off the master ends the group. Continue?": "Ausschalten des Masters beendet die Gruppe. Fortfahren?",
+            "Switching off the master stops the group. The next selected device becomes master. Continue?": "Ausschalten des Masters stoppt die Gruppe. Das nächste ausgewählte Gerät wird Master. Fortfahren?",
+            "Master – plays with": "Master – spielt mit",
+            "Master – select more devices": "Master – weitere Geräte auswählen",
+            "Selected – becomes master when switched on": "Ausgewählt – wird nach dem Einschalten Master",
+            "Selected – waits for a switched-on Sonos device": "Ausgewählt – wartet auf ein eingeschaltetes Sonos-Gerät",
             "off": "aus",
             "starting or not reachable": "startet oder nicht erreichbar",
             "not available": "nicht erreichbar",

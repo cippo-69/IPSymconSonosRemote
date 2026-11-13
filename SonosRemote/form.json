@@ -2,7 +2,7 @@
     "elements": [
         {
             "type": "Label",
-            "caption": "Tile for the tile visualization: device selection, power, one group via Master switch, favorites and the Sonos library."
+            "caption": "Tile for the tile visualization: device selection, power, one group (the first selected device is master), favorites and the Sonos library."
         },
         {
             "type": "List",
@@ -102,7 +102,7 @@
         },
         {
             "type": "Label",
-            "caption": "Group: select the devices with the switch „Group“ in the tile, then switch on „Master“. Sonos devices play in sync. Other devices are coupled: they are switched on, set to the input above and follow play/pause/stop of the master."
+            "caption": "Group: select the devices with the switch „Group“ in the tile. The first selected Sonos device becomes master, Sonos devices play in sync with it. Other devices are coupled: they are switched on, set to the input above and follow play/pause/stop of the master."
         },
         {
             "type": "NumberSpinner",

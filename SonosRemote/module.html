@@ -160,7 +160,9 @@
 </div>
 
 <script>
-  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', cat: {}, saveAs: '', drag: {}, browse: null };
+  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', cat: {}, saveAs: '', drag: {}, browse: null, covers: {} };
+  // Cover: https-Adresse oder eingebettetes Bild ('cover:<hash>', kommt als eigene Nachricht)
+  function coverSrc(u) { u = String(u || ''); return u.startsWith('cover:') ? (SR.covers[u.slice(6)] || '') : u; }
   const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums' };
   const SOURCES = { fv: 'Sonos favorites', sq: 'Sonos playlists', radio: 'Radio', artist: 'Artists', album: 'Albums', track: 'Tracks' };
   const P = {
@@ -254,7 +256,7 @@
     if (!d) { $('nowBox').innerHTML = `<div class="empty">${T('No devices configured')}</div>`; return; }
     const lead = d.syncedTo && dev(d.syncedTo) ? dev(d.syncedTo) : d;
     const active = d.available && (lead.state === 'playing' || lead.state === 'paused');
-    let html = `<div class="np"><div class="cover">${lead.image && d.available ? `<img src="${esc(lead.image)}" onerror="this.remove()">` : svg(d.kind === 'sonos' ? 'note' : 'speaker')}</div>
+    let html = `<div class="np"><div class="cover">${coverSrc(lead.image) && d.available ? `<img src="${esc(coverSrc(lead.image))}" onerror="this.remove()">` : svg(d.kind === 'sonos' ? 'note' : 'speaker')}</div>
       <div class="meta"><div class="t">${esc(active && lead.title ? lead.title : d.name)}</div><div class="a">${esc(active && lead.title ? lead.artist : stateText(d))}</div></div>`;
     if (d.power === false) {
       html += `<button class="btn fill" data-power="1">${svg('power')}${T('Switch on')}</button>`;
@@ -288,7 +290,7 @@
     root.querySelectorAll('[data-power]').forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
       const on = d.power === false;
-      if (!on && d.master && !confirm(T('Switching off the master ends the group. Continue?'))) return;
+      if (!on && d.master && !confirm(T('Switching off the master stops the group. The next selected device becomes master. Continue?'))) return;
       send('power', { id: d.id, value: on });
     });
     root.querySelectorAll('[data-vol]').forEach((r) => {
@@ -303,26 +305,19 @@
   function renderDevices() {
     const list = SR.state.devices;
     if (!list.length) { $('devList').innerHTML = `<div class="empty">${T('No devices configured')}</div>`; return; }
-    const master = list.find((d) => d.master);
+    const master = dev(SR.state.groupMaster);
     $('devList').innerHTML = list.map((d) => devHTML(d, master)).join('');
     list.forEach((d) => bindDevice(d, master));
   }
   function devHTML(d, master) {
-    const badge = d.master ? `<span class="badge">${T('Master')}</span>` : (d.syncedTo ? `<span class="badge f">${T(d.coupled ? 'coupled' : 'Group')}</span>` : '');
+    const isMaster = master && master.id === d.id;
+    const badge = isMaster || d.master ? `<span class="badge">${T('Master')}</span>` : (d.syncedTo ? `<span class="badge f">${T(d.coupled ? 'coupled' : 'Group')}</span>` : '');
     const active = d.available && d.caps.transport && (d.state === 'playing' || d.state === 'paused') && !d.syncedTo;
-    let rows = '';
-    // Master: nur Sonos, eingeschaltet und nicht selbst Mitglied einer Gruppe
-    if (d.caps.group && d.available && (!d.syncedTo || d.master)) {
-      const names = (d.members || []).map((m) => (dev(m) || {}).name || m).join(', ');
-      rows += `<div class="row"><span class="lbl">${T('Master')}</span><span class="s">${d.master && names ? T('Plays with') + ' ' + esc(names) : T('Selected devices play along')}</span><button class="switch ${d.master ? 'on' : ''}" data-master="1"></button></div>`;
-    }
-    // Auswahl für die Gruppe: jedes Gerät außer dem Master, auch im ausgeschalteten Zustand
-    if (!d.master) {
-      rows += `<div class="row"><span class="lbl">${T('Group')}</span><span class="s">${esc(groupText(d, master))}</span><button class="switch ${d.selected ? 'on' : ''}" data-select="1"></button></div>`;
-    }
+    // Gruppe: jedes Gerät, auch im ausgeschalteten Zustand. Das zuerst ausgewählte Sonos-Gerät wird Master.
+    const rows = `<div class="row"><span class="lbl">${T('Group')}</span><span class="s">${esc(groupText(d, master))}</span><button class="switch ${d.selected ? 'on' : ''}" data-select="1"></button></div>`;
     return `<div class="dev ${d.available ? '' : 'off'}" id="dev-${esc(d.id)}">
       <div class="head">
-        ${thumb(d.available ? d.image : '', 'speaker')}
+        ${thumb(d.available ? coverSrc(d.image) : '', 'speaker')}
         <div class="txt"><div class="n">${esc(d.name)}${badge}</div><div class="s">${esc(stateText(d))}</div></div>
         ${d.kind !== 'sonos' ? `<span class="tag">${T('external')}</span>` : ''}
         ${active ? `<button class="ib sm" data-c="play_pause">${svg(d.state === 'playing' ? 'pause' : 'play')}</button>` : ''}
@@ -334,14 +329,19 @@
     const root = document.getElementById('dev-' + d.id);
     if (!root) return;
     bindControls(root, d);
-    const ms = root.querySelector('[data-master]');
-    if (ms) ms.onclick = () => { ms.classList.toggle('on'); send('master', { id: d.id, value: !d.master }); };
     const sel = root.querySelector('[data-select]');
     if (sel) sel.onclick = () => { sel.classList.toggle('on'); send('select', { id: d.id, value: !d.selected }); };
   }
   function groupText(d, master) {
     if (!d.selected) return T('Not in the group');
-    if (!master) return T('Selected – starts with the master');
+    if (master && master.id === d.id) {
+      const names = (d.members || []).map((m) => (dev(m) || {}).name || m).join(', ');
+      return names ? T('Master – plays with') + ' ' + names : T('Master – select more devices');
+    }
+    if (!master) {
+      if (d.kind === 'sonos' && !d.available) return T('Selected – becomes master when switched on');
+      return T('Selected – waits for a switched-on Sonos device');
+    }
     if (d.kind !== 'sonos') return d.coupled ? T('Coupled with') + ' ' + master.name : T('Joining …');
     if (d.syncedTo === master.id) return T('Plays in sync with') + ' ' + master.name;
     if (!d.available) return T('Selected – joins when switched on');
@@ -452,6 +452,7 @@
     switch (msg.type) {
       case 'full':
         SR.state = msg.state;
+        { const keep = new Set(SR.state.devices.map((d) => String(d.image || '').slice(6))); Object.keys(SR.covers).forEach((h) => { if (!keep.has(h)) delete SR.covers[h]; }); }
         if (Object.values(SR.drag).some(Boolean)) return;   // Regler wird gerade bewegt
         renderPickers(); renderNow(); renderDevices(); renderFavs();
         { const sig = JSON.stringify(msg.state.services || []); if (!$('srcChips').innerHTML || sig !== SR.svcSig) { SR.svcSig = sig; renderLibChrome(); } }
@@ -463,6 +464,10 @@
         break;
       case 'browse':
         renderBrowse(msg);
+        break;
+      case 'cover':
+        SR.covers[msg.hash] = msg.data;
+        if (SR.state.devices.length) { renderNow(); renderDevices(); }
         break;
       case 'toast':
         toast(msg.text);

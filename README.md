@@ -10,9 +10,10 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
 - **Geräteauswahl per Pulldown** (Jetzt läuft, Favoriten, Bibliothek – die Auswahl gilt überall).
 - **Ein/Aus** je Gerät über einen Schaltaktor (z. B. Zigbee2MQTT-Steckdose). Geräte ohne Schaltaktor gelten als immer an.
   Vor dem Ausschalten eines Sonos-Geräts wird die Wiedergabe angehalten und die Gruppe verlassen bzw. aufgelöst.
-- **Eine Gruppe über den Master-Schalter, Mitglieder frei wählbar:** Bei jedem Gerät mit dem Schalter „Gruppe“ auswählen,
-  ob es mitspielen soll (auch im ausgeschalteten Zustand). Master an → nur die ausgewählten Geräte kommen dazu; Master aus →
-  Gruppe aufgelöst, die Auswahl bleibt für das nächste Mal. Bei aktiver Gruppe wirkt der Schalter „Gruppe“ sofort.
+- **Eine Gruppe, Mitglieder frei wählbar:** Bei jedem Gerät mit dem Schalter „Gruppe“ auswählen, ob es mitspielen soll
+  (auch im ausgeschalteten Zustand). Das zuerst ausgewählte eingeschaltete Sonos-Gerät wird Master und ist in der Kachel so
+  markiert; alle weiteren ausgewählten Geräte spielen mit ihm. Wird der Master abgewählt oder ausgeschaltet, übernimmt das
+  nächste ausgewählte Sonos-Gerät. Alle abgewählt → Gruppe aufgelöst.
   Ein ausgewähltes Sonos-Gerät, das erst eingeschaltet wird, tritt automatisch bei, sobald es hochgefahren ist.
 - **Nicht-Sonos-Geräte in der Gruppe (gekoppelt):** Synchrone Wiedergabe ist ein Sonos-eigenes Protokoll – nur Sonos-Geräte
   können einer Sonos-Gruppe beitreten. Andere Geräte werden stattdessen gekoppelt: Sie werden eingeschaltet, auf den
@@ -63,8 +64,7 @@ und „Mute-Steuerung“, wenn der Stumm-Knopf erscheinen soll.
 ```php
 SNR_PlayFavorite($id, 'radio', 3, '12345');  // Art, Platz 1–20, Instanz-ID des Geräts ('' = erstes eingeschaltetes Sonos-Gerät)
 SNR_SetPower($id, '12345', true);           // Gerät ein/aus
-SNR_SelectForGroup($id, '23456', true);     // Gerät für die Gruppe auswählen (bei aktiver Gruppe sofort)
-SNR_SetMaster($id, '12345', true);          // Gruppe mit 12345 als Master und den ausgewählten Geräten bilden (false = auflösen)
+SNR_SelectForGroup($id, '23456', true);     // Gerät für die Gruppe auswählen/abwählen (das erste ausgewählte wird Master)
 SNR_GetFavorites($id);                      // JSON aller Favoriten
 ```
 

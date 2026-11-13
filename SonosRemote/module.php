@@ -8,7 +8,7 @@ require_once __DIR__ . '/../libs/SonosSMAPI.php';
 /**
  * Sonos-Kachel (HTML-SDK)
  *
- * Geräteauswahl per Pulldown, An/Aus über Schaltaktoren (z. B. Z2M-Steckdosen), eine Gruppe über den Master-Schalter,
+ * Geräteauswahl per Pulldown, An/Aus über Schaltaktoren (z. B. Z2M-Steckdosen), eine Gruppe (das zuerst ausgewählte Gerät ist Master),
  * Favoriten je Art (Playlist, Radio, Titel, Interpret, Album) mit 20 Plätzen, Bibliothek der Sonos-Anlage.
  * Sonos-Player kommen aus tkugelberg/Sonos; weitere Geräte laufen über GenericDevice (Variablen) außerhalb der Gruppierung.
  */
@@ -77,7 +77,19 @@ class SonosRemote extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        $initial = '<script>handleMessage(' . json_encode(json_encode(['type' => 'full', 'state' => $this->BuildState()])) . ');</script>';
+        $state = $this->BuildState();
+        $initial = '';
+        // eingebettete Cover, auf die der Zustand verweist, gleich mitliefern
+        foreach ($state['devices'] as $d) {
+            $img = (string) ($d['image'] ?? '');
+            if (str_starts_with($img, 'cover:')) {
+                $data = $this->GetBuffer('Cover_' . substr($img, 6));
+                if ($data !== '') {
+                    $initial .= '<script>handleMessage(' . json_encode(json_encode(['type' => 'cover', 'hash' => substr($img, 6), 'data' => $data])) . ');</script>';
+                }
+            }
+        }
+        $initial .= '<script>handleMessage(' . json_encode(json_encode(['type' => 'full', 'state' => $state])) . ');</script>';
         $accent = sprintf('#%06X', $this->ReadPropertyInteger('AccentColor') & 0xFFFFFF);
         return file_get_contents(__DIR__ . '/module.html') . '<style>:root{--sr-accent:' . $accent . ';}</style>' . $initial;
     }
@@ -101,8 +113,8 @@ class SonosRemote extends IPSModuleStrict
     public function Flush(): void
     {
         $this->SetTimerInterval('Flush', 0);
-        if ($this->ReadAttributeString('GroupMaster') !== '') {
-            // ausgewählte Geräte, die gerade hochgefahren sind, nachträglich in die Gruppe holen
+        if (count($this->Selection()) > 0) {
+            // ausgewählte Geräte, die gerade hochgefahren sind, nachträglich in die Gruppe holen (bzw. Master werden)
             $this->ApplyGroup();
         }
         $this->PushFull();
@@ -139,10 +151,6 @@ class SonosRemote extends IPSModuleStrict
                     break;
                 case 'power':
                     $this->SetPower($id, (bool) ($v['value'] ?? false));
-                    break;
-                case 'master':
-                    $this->SetMaster($id, (bool) ($v['value'] ?? false));
-                    $this->PushFull();
                     break;
                 case 'select':
                     $this->SelectForGroup($id, (bool) ($v['value'] ?? false));
@@ -226,7 +234,8 @@ class SonosRemote extends IPSModuleStrict
     {
         $dev = $this->Device($Device);
         if (!$On && $Device === $this->ReadAttributeString('GroupMaster')) {
-            $this->EndGroup();
+            // Master geht aus: Gruppe an das nächste ausgewählte Gerät übergeben (die Auswahl bleibt)
+            $this->ApplyGroup($Device);
         }
         if (!$On) {
             $this->Uncouple($Device);
@@ -239,49 +248,12 @@ class SonosRemote extends IPSModuleStrict
     }
 
     /**
-     * Master an: die ausgewählten Geräte spielen mit $Device (Sonos synchron, andere gekoppelt).
-     * Master aus: Gruppe auflösen.
+     * Gerät für die Gruppe aus-/abwählen. Das zuerst ausgewählte (eingeschaltete) Sonos-Gerät wird Master,
+     * alle weiteren spielen mit (Sonos synchron, andere gekoppelt). Wird der Master abgewählt, übernimmt das nächste.
      */
-    public function SetMaster(string $Device, bool $On): bool
-    {
-        $master = $this->Device($Device);
-        if (!$master instanceof SonosDevice) {
-            throw new Exception($this->Translate('Only a Sonos device can be master'));
-        }
-        if (!$On) {
-            if ($this->ReadAttributeString('GroupMaster') === $Device) {
-                $this->EndGroup();
-            } else {
-                $master->DissolveGroup();
-            }
-            return true;
-        }
-        if (!$master->Available()) {
-            throw new Exception(sprintf($this->Translate('%s is switched off'), $master->Name()));
-        }
-        $selection = array_values(array_diff($this->Selection(), [$Device]));
-        if (count($selection) === 0) {
-            throw new Exception($this->Translate('Select the devices for the group first (switch „Group“)'));
-        }
-        // nur eine Gruppe: alte Gruppe beenden, Master freistellen
-        $this->EndGroup();
-        if ($master->MemberOf() > 0) {
-            SNS_SetGroup($master->InstanceID(), 0);
-        }
-        $this->WriteAttributeString('GroupSelection', json_encode($selection));
-        $this->WriteAttributeString('GroupMaster', $Device);
-        $this->RememberMasterStatus();
-        $this->ApplyGroup();
-        return true;
-    }
-
-    /** Gerät für die Gruppe aus-/abwählen. Bei aktiver Gruppe wird es sofort hinzugenommen bzw. herausgenommen. */
     public function SelectForGroup(string $Device, bool $Selected): bool
     {
         $this->Device($Device); // prüft, ob es das Gerät gibt
-        if ($Device === $this->ReadAttributeString('GroupMaster')) {
-            return false;
-        }
         $sel = array_values(array_diff($this->Selection(), [$Device]));
         if ($Selected) {
             $sel[] = $Device;
@@ -392,18 +364,40 @@ class SonosRemote extends IPSModuleStrict
      * Gruppe an die Auswahl angleichen (wiederholbar, ändert nur Abweichungen):
      * Sonos tritt synchron bei, andere Geräte werden gekoppelt (einschalten, Eingang wählen, Wiedergabe folgt dem Master).
      */
-    private function ApplyGroup(): void
+    private function ApplyGroup(string $Exclude = ''): void
     {
-        $master = $this->MasterDevice();
-        if ($master === null) {
-            $this->WriteAttributeString('GroupMaster', '');
-            return;
-        }
         $sel = $this->Selection();
+        $master = $this->MasterDevice();
+        // Master abgewählt oder ausgeschaltet: Gruppe beenden, das nächste ausgewählte Gerät übernimmt
+        if ($master !== null && (!in_array($master->Key(), $sel, true) || $master->Key() === $Exclude)) {
+            $this->EndGroup();
+            $master = null;
+        }
+        if ($master === null) {
+            // Master wird das zuerst ausgewählte eingeschaltete Sonos-Gerät
+            $devs = $this->Devices();
+            foreach ($sel as $k) {
+                $d = $devs[$k] ?? null;
+                if ($d instanceof SonosDevice && $k !== $Exclude && $d->Available()) {
+                    $master = $d;
+                    break;
+                }
+            }
+            if ($master === null) {
+                $this->WriteAttributeString('GroupMaster', '');
+                $this->WriteAttributeString('Coupled', '[]');
+                return;
+            }
+            if ($master->MemberOf() > 0) {
+                SNS_SetGroup($master->InstanceID(), 0);
+            }
+            $this->WriteAttributeString('GroupMaster', $master->Key());
+            $this->RememberMasterStatus();
+        }
         $coupled = $this->Coupled();
         $mi = $master->InstanceID();
         foreach ($this->Devices() as $key => $d) {
-            if ($key === $master->Key()) {
+            if ($key === $master->Key() || $key === $Exclude) {
                 continue;
             }
             $want = in_array((string) $key, $sel, true);
@@ -512,6 +506,7 @@ class SonosRemote extends IPSModuleStrict
                 $byInstance[(int) $s['instance']] = $key;
             }
         }
+        $this->ResolveCovers($list, $devs);
         // Gruppen aus MemberOfGroup der Sonos-Instanzen ableiten
         foreach ($list as $key => $s) {
             $m = (int) ($s['memberOf'] ?? 0);
@@ -544,8 +539,74 @@ class SonosRemote extends IPSModuleStrict
             'devices'  => array_values($list),
             'hasSonos' => count(array_filter($devs, fn ($d) => $d instanceof SonosDevice)) > 0,
             'favs'     => $this->PublicFavorites(),
-            'services' => $this->PublicServices()
+            'services' => $this->PublicServices(),
+            'groupMaster' => $gm
         ];
+    }
+
+    /**
+     * Cover bzw. Senderlogo je Sonos-Gerät. Neu geladen wird nur, wenn sich Titel/Sender ändert.
+     * https-Bilder gehen direkt an die Kachel; http-Bilder (z. B. vom Player auf Port 1400) werden eingebettet,
+     * weil die Kachel sie über https (Symcon Connect, App) sonst nicht anzeigen darf.
+     */
+    private function ResolveCovers(array &$List, array $Devs): void
+    {
+        $cache = json_decode($this->GetBuffer('Covers'), true);
+        $cache = is_array($cache) ? $cache : [];
+        $used = [];
+        foreach ($List as $key => &$s) {
+            $ck = (string) ($s['coverKey'] ?? '');
+            unset($s['coverKey']);
+            $d = $Devs[$key] ?? null;
+            if (!$d instanceof SonosDevice || empty($s['available']) || $ck === '') {
+                continue;
+            }
+            if (!array_key_exists($ck, $cache)) {
+                $cache[$ck] = $this->LoadCover($d);
+            }
+            $s['image'] = $cache[$ck];
+            $used[$ck] = true;
+        }
+        unset($s);
+        $this->SetBuffer('Covers', json_encode(array_intersect_key($cache, $used)));
+    }
+
+    private function LoadCover(SonosDevice $Device): string
+    {
+        try {
+            $url = $Device->CoverUrl();
+        } catch (Throwable $e) {
+            $this->SendDebug('Cover', $e->getMessage(), 0);
+            return '';
+        }
+        if ($url === '' || stripos($url, 'https://') === 0) {
+            return $url;
+        }
+        $hash = md5($url);
+        if ($this->GetBuffer('Cover_' . $hash) === '') {
+            try {
+                [$status, $bin] = SonosSMAPI::Http($url, null, [], 5);
+            } catch (Throwable $e) {
+                $this->SendDebug('Cover', $e->getMessage(), 0);
+                return '';
+            }
+            $info = ($status === 200 && strlen($bin) < 800000) ? @getimagesizefromstring($bin) : false;
+            if ($info === false) {
+                $this->SendDebug('Cover', 'kein Bild (HTTP ' . $status . '): ' . $url, 0);
+                return '';
+            }
+            $data = 'data:' . $info['mime'] . ';base64,' . base64_encode($bin);
+            $this->SetBuffer('Cover_' . $hash, $data);
+            // nur die letzten 12 Cover vorhalten
+            $keep = array_values(array_diff((array) json_decode($this->GetBuffer('CoverList'), true), [$hash]));
+            $keep[] = $hash;
+            while (count($keep) > 12) {
+                $this->SetBuffer('Cover_' . array_shift($keep), '');
+            }
+            $this->SetBuffer('CoverList', json_encode($keep));
+            $this->UpdateVisualizationValue(json_encode(['type' => 'cover', 'hash' => $hash, 'data' => $data]));
+        }
+        return 'cover:' . $hash;
     }
 
     private function PushFull(): void
