@@ -1,0 +1,14 @@
+{
+    "id": "{B0909125-E2F3-43E0-8238-A55FA073A4DE}",
+    "name": "SonosRemote",
+    "type": 3,
+    "vendor": "Sonos",
+    "aliases": [
+        "Sonos Kachel"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "SNR",
+    "url": "https://github.com/cippo-69/IPSymconSonosRemote"
+}

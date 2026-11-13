@@ -1,0 +1,12 @@
+{
+    "id": "{DEDCEBF7-69FF-41FA-BA89-9D4B6BDD1FDC}",
+    "author": "cippo-69",
+    "name": "Sonos Kachel",
+    "url": "https://github.com/cippo-69/IPSymconSonosRemote",
+    "compatibility": {
+        "version": "8.0"
+    },
+    "version": "0.1",
+    "build": 1,
+    "date": 0
+}

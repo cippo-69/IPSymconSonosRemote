@@ -1,0 +1,132 @@
+{
+    "elements": [
+        {
+            "type": "Label",
+            "caption": "Tile for the tile visualization: device selection, power, one group via Master switch, favorites and the Sonos library."
+        },
+        {
+            "type": "List",
+            "name": "Devices",
+            "caption": "Devices",
+            "rowCount": 8,
+            "add": true,
+            "delete": true,
+            "changeOrder": true,
+            "columns": [
+                {
+                    "caption": "Instance (Sonos player or other device)",
+                    "name": "InstanceID",
+                    "width": "260px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectInstance"
+                    }
+                },
+                {
+                    "caption": "Name (optional)",
+                    "name": "Name",
+                    "width": "160px",
+                    "add": "",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                },
+                {
+                    "caption": "Power switch (e.g. Z2M plug)",
+                    "name": "PowerVariable",
+                    "width": "240px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectVariable"
+                    }
+                },
+                {
+                    "caption": "Volume (optional)",
+                    "name": "VolumeVariable",
+                    "width": "180px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectVariable"
+                    }
+                },
+                {
+                    "caption": "Mute (optional)",
+                    "name": "MuteVariable",
+                    "width": "180px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectVariable"
+                    }
+                },
+                {
+                    "caption": "Playback (optional, other devices)",
+                    "name": "StatusVariable",
+                    "width": "200px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectVariable"
+                    }
+                },
+                {
+                    "caption": "Title (optional, other devices)",
+                    "name": "TitleVariable",
+                    "width": "200px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectVariable"
+                    }
+                },
+                {
+                    "caption": "Input for group (optional, other devices)",
+                    "name": "SourceVariable",
+                    "width": "220px",
+                    "add": 0,
+                    "edit": {
+                        "type": "SelectVariable"
+                    }
+                },
+                {
+                    "caption": "Input value",
+                    "name": "SourceValue",
+                    "width": "120px",
+                    "add": "",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Label",
+            "caption": "Sonos players come from the Sonos module (tkugelberg/Sonos). Leave the power switch empty for devices that are always on."
+        },
+        {
+            "type": "Label",
+            "caption": "Group: select the devices with the switch „Group“ in the tile, then switch on „Master“. Sonos devices play in sync. Other devices are coupled: they are switched on, set to the input above and follow play/pause/stop of the master."
+        },
+        {
+            "type": "NumberSpinner",
+            "name": "BrowseLimit",
+            "caption": "Library entries per request",
+            "minimum": 10,
+            "maximum": 500
+        },
+        {
+            "type": "SelectColor",
+            "name": "AccentColor",
+            "caption": "Accent color"
+        }
+    ],
+    "actions": [
+        {
+            "type": "Button",
+            "caption": "Add all Sonos players",
+            "onClick": "IPS_RequestAction($id, 'importSonos', '{}');"
+        },
+        {
+            "type": "Button",
+            "caption": "Refresh tile",
+            "onClick": "IPS_RequestAction($id, 'refresh', '{}');"
+        }
+    ]
+}

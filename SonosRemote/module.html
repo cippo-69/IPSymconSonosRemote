@@ -1,0 +1,449 @@
+<style>
+  :root {
+    --sr-accent: #1DB954;
+    --sr-bg: rgba(127,127,127,.07);
+    --sr-bg2: rgba(127,127,127,.14);
+    --sr-line: rgba(127,127,127,.22);
+    --sr-muted: rgba(127,127,127,1);
+    --sr-top: 40px;          /* Platz für Titel und Vergrößern-Symbol der Symcon-Kachel */
+    --sr-nav: 58px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body { font-family: 'Poppins', 'Work Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.35; }
+  button, select { font: inherit; color: inherit; }
+  svg { width: 1em; height: 1em; fill: currentColor; display: block; }
+
+  #sr { position: absolute; inset: 0; display: flex; flex-direction: column; padding-top: var(--sr-top); }
+  .view { display: none; flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 12px; }
+  .view.active { display: block; }
+
+  .nav { flex: none; height: var(--sr-nav); display: flex; border-top: 1px solid var(--sr-line); }
+  .nav button { flex: 1; border: 0; background: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 500; color: var(--sr-muted); padding: 0; }
+  .nav button svg { font-size: 22px; }
+  .nav button.active { color: var(--sr-accent); }
+
+  /* Pulldown Geräteauswahl */
+  .pick { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; }
+  .pick .label { margin: 0; flex: none; }
+  .sel { flex: 1; min-width: 0; appearance: none; -webkit-appearance: none; padding: 9px 34px 9px 12px; border-radius: 12px; border: 1px solid var(--sr-line); background: var(--sr-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23888' d='M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z'/%3E%3C/svg%3E") no-repeat right 10px center / 18px; cursor: pointer; font-weight: 500; }
+  .sel option { color: #000; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0 8px; }
+  .chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--sr-line); background: none; cursor: pointer; font-size: 13px; white-space: nowrap; }
+  .chip.on { background: var(--sr-accent); border-color: var(--sr-accent); color: #fff; }
+
+  /* Jetzt läuft */
+  .np { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 6px; }
+  .cover { width: min(58vw, 42vh, 260px); aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: var(--sr-bg2); display: flex; align-items: center; justify-content: center; color: var(--sr-muted); box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+  .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .cover svg { font-size: 56px; opacity: .45; }
+  .meta { text-align: center; width: 100%; min-width: 0; }
+  .meta .t { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta .a { color: var(--sr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctrl { display: flex; gap: 18px; align-items: center; justify-content: center; }
+  .ib { border: 0; background: none; cursor: pointer; width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; padding: 0; flex: none; }
+  .ib:hover { background: var(--sr-bg2); }
+  .ib:disabled { opacity: .35; cursor: default; }
+  .ib.sm { width: 34px; height: 34px; font-size: 18px; }
+  .ib.on { color: var(--sr-accent); }
+  .ib.main { width: 58px; height: 58px; font-size: 26px; background: var(--sr-accent); color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+  .ib.main:hover { filter: brightness(1.08); background: var(--sr-accent); }
+  .ib.fill { background: var(--sr-accent); color: #fff; }
+  .hint { color: var(--sr-muted); font-size: 13px; text-align: center; }
+  .btn { border: 1px solid var(--sr-accent); background: none; color: var(--sr-accent); border-radius: 999px; padding: 7px 16px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .btn.fill { background: var(--sr-accent); color: #fff; }
+
+  .vol { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; }
+  .vol .v { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sr-muted); font-size: 13px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: 26px; background: none; margin: 0; cursor: pointer; --p: 50%; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--sr-accent) var(--p), var(--sr-line) var(--p)); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--sr-line); }
+  input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--sr-accent); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--sr-accent); margin-top: -6px; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--sr-accent); border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+
+  /* Listen */
+  .search { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; border-radius: 12px; border: 1px solid var(--sr-line); background: var(--sr-bg); margin-bottom: 8px; }
+  .search svg { font-size: 18px; color: var(--sr-muted); flex: none; }
+  .search input { flex: 1; min-width: 0; padding: 10px 0; border: 0; outline: 0; background: none; color: inherit; font: inherit; }
+  .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--sr-muted); margin: 10px 0 4px; }
+  .item, .slot { display: flex; align-items: center; gap: 10px; padding: 5px 6px; margin: 0 -6px; border-radius: 10px; }
+  .item { cursor: pointer; }
+  .item:hover, .slot.fill:hover { background: var(--sr-bg); }
+  .slot.fill { cursor: pointer; }
+  .thumb { width: 44px; height: 44px; border-radius: 8px; overflow: hidden; background: var(--sr-bg2); flex: none; display: flex; align-items: center; justify-content: center; color: var(--sr-muted); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .thumb svg { font-size: 20px; opacity: .5; }
+  .txt { flex: 1; min-width: 0; }
+  .txt .n { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .txt .s { font-size: 12px; color: var(--sr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot .no { width: 20px; text-align: right; font-size: 12px; color: var(--sr-muted); font-variant-numeric: tabular-nums; flex: none; }
+  .slot.free .txt .n { color: var(--sr-muted); font-weight: 400; font-style: italic; }
+  .slot input { width: 100%; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--sr-line); background: var(--sr-bg); color: inherit; font: inherit; }
+  .slot .ib.sm { width: 30px; height: 30px; font-size: 16px; }
+  .favhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .edit { border: 1px solid var(--sr-line); background: none; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px; flex: none; }
+  .edit.on { background: var(--sr-accent); border-color: var(--sr-accent); color: #fff; }
+  .tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--sr-muted); border: 1px solid var(--sr-line); border-radius: 6px; padding: 1px 5px; flex: none; }
+
+  /* Geräte */
+  .dev { padding: 10px 12px; border-radius: 14px; background: var(--sr-bg); margin-bottom: 8px; }
+  .dev.off .head .txt, .dev.off .thumb { opacity: .55; }
+  .dev .head { display: flex; align-items: center; gap: 10px; }
+  .dev .thumb { width: 42px; height: 42px; }
+  .dev .txt .n { font-weight: 600; }
+  .dev .vol { max-width: none; margin-top: 4px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--sr-line); font-size: 13px; }
+  .row .lbl { font-weight: 600; }
+  .row .s { color: var(--sr-muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .switch { margin-left: auto; border: 0; cursor: pointer; width: 40px; height: 22px; border-radius: 11px; background: var(--sr-line); position: relative; padding: 0; flex: none; }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .switch.on { background: var(--sr-accent); }
+  .switch.on::after { left: 21px; }
+  .switch:disabled { opacity: .4; cursor: default; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--sr-accent); color: #fff; margin-left: 6px; vertical-align: 1px; }
+  .badge.f { background: var(--sr-bg2); color: inherit; }
+  .empty { color: var(--sr-muted); padding: 24px 8px; text-align: center; }
+  #toast { position: absolute; left: 50%; bottom: calc(var(--sr-nav) + 10px); transform: translateX(-50%); background: rgba(30,30,30,.92); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px; display: none; z-index: 9; max-width: 92%; text-align: center; }
+
+  @media (max-height: 330px) {
+    .nav { display: none; }
+    .view { display: none !important; }
+    #v-now { display: block !important; }
+    .cover { display: none; }
+    .np { gap: 6px; }
+  }
+</style>
+
+<div id="sr">
+  <div class="view active" id="v-now">
+    <div class="pick"><select class="sel" id="nowSel" aria-label="Device"></select></div>
+    <div id="nowBox"></div>
+  </div>
+
+  <div class="view" id="v-favs">
+    <div class="chips" id="favTypeChips"></div>
+    <div class="pick"><span class="label">Play on</span><select class="sel" data-target="1"></select><button class="edit" id="favEdit">Edit</button></div>
+    <div id="favList"></div>
+  </div>
+
+  <div class="view" id="v-lib">
+    <div class="chips" id="srcChips"></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24"><path d="M9.5 3a6.5 6.5 0 0 1 5.2 10.4l5.4 5.4-1.4 1.4-5.4-5.4A6.5 6.5 0 1 1 9.5 3zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/></svg>
+      <input id="q" type="search" placeholder="Filter or search …" autocomplete="off" enterkeyhint="search">
+      <button class="ib sm fill" id="qbtn" title="Search"><svg viewBox="0 0 24 24"><path d="M5 11h11.2l-4.6-4.6L13 5l7 7-7 7-1.4-1.4 4.6-4.6H5z"/></svg></button>
+    </div>
+    <div class="pick"><span class="label">Play on</span><select class="sel" data-target="1"></select></div>
+    <div class="pick"><span class="label">Save as</span><select class="sel" id="saveAs"></select></div>
+    <div id="results"></div>
+  </div>
+
+  <div class="view" id="v-devices">
+    <div id="devList"></div>
+  </div>
+
+  <div class="nav">
+    <button class="active" data-v="now"><svg viewBox="0 0 24 24"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6z"/></svg><span>Now playing</span></button>
+    <button data-v="favs"><svg viewBox="0 0 24 24"><path d="M12 17.3 18.2 21l-1.6-7 5.4-4.7-7.2-.6L12 2 9.2 8.7l-7.2.6 5.4 4.7-1.6 7z"/></svg><span>Favorites</span></button>
+    <button data-v="lib"><svg viewBox="0 0 24 24"><path d="M4 6H2v14a2 2 0 0 0 2 2h14v-2H4V6zm16-4H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-2 5h-3v5.5a2.5 2.5 0 1 1-2.5-2.5c.6 0 1 .1 1.5.4V5h4v2z"/></svg><span>Library</span></button>
+    <button data-v="devices"><svg viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg><span>Devices</span></button>
+  </div>
+  <div id="toast"></div>
+</div>
+
+<script>
+  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', saveAs: '', drag: {}, browse: null };
+  const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums' };
+  const SOURCES = { fv: 'Sonos favorites', sq: 'Sonos playlists', radio: 'Radio', artist: 'Artists', album: 'Albums', track: 'Tracks' };
+  const P = {
+    play: 'M8 5v14l11-7z',
+    pause: 'M6 5h4v14H6zm8 0h4v14h-4z',
+    prev: 'M6 6h2v12H6zm3.5 6L18 18V6z',
+    next: 'M16 6h2v12h-2zM6 18l8.5-6L6 6z',
+    vol: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
+    mute: 'M16.5 12A4.5 4.5 0 0 0 14 8v2.2l2.4 2.4c.1-.2.1-.4.1-.6zM19 12c0 .9-.2 1.8-.5 2.6l1.5 1.5A8.8 8.8 0 0 0 21 12a9 9 0 0 0-7-8.8v2.1A7 7 0 0 1 19 12zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.3a7 7 0 0 1-2.3 1.2v2.1a9 9 0 0 0 3.7-1.8l2 2 1.3-1.3-9-9L4.3 3zM12 4 9.9 6.1 12 8.2V4z',
+    power: 'M13 3h-2v10h2V3zm4.8 2.2-1.4 1.4A7 7 0 1 1 7.6 6.6L6.2 5.2A9 9 0 1 0 17.8 5.2z',
+    note: 'M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6z',
+    radio: 'M20 6H8.3l8.3-3.4L15.9 1 3.2 6.2C2.5 6.5 2 7.2 2 8v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zM7 20a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm13-8h-2v-2h-2v2H4V8h16v4z',
+    star: 'M12 17.3 18.2 21l-1.6-7 5.4-4.7-7.2-.6L12 2 9.2 8.7l-7.2.6 5.4 4.7-1.6 7z',
+    starO: 'M22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2l5.5 4.7L5.8 21 12 17.3 18.2 21l-1.6-7.1L22 9.2zM12 15.4l-3.8 2.3 1-4.3-3.3-2.9 4.4-.4L12 6.1l1.7 4 4.4.4-3.3 2.9 1 4.3-3.8-2.3z',
+    up: 'M7.4 15.4 12 10.8l4.6 4.6L18 14l-6-6-6 6z',
+    down: 'M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z',
+    del: 'M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z',
+    speaker: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z',
+    person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z',
+    album: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 14.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9zm0-5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
+    list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z'
+  };
+  const ICON = { playlist: 'list', radio: 'radio', track: 'note', artist: 'person', album: 'album' };
+  const svg = (k) => `<svg viewBox="0 0 24 24"><path d="${P[k]}"/></svg>`;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const T = (s) => (typeof translate === 'function' ? translate(s) : s);
+
+  function send(ident, value) { requestAction(ident, JSON.stringify(value)); }
+  function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(SR.tt); SR.tt = setTimeout(() => el.style.display = 'none', 3000); }
+  function dev(id) { return SR.state.devices.find((d) => d.id === id); }
+  function thumb(img, icon) { return `<div class="thumb">${img ? `<img src="${esc(img)}" loading="lazy" onerror="this.remove()">` : svg(icon)}</div>`; }
+  function paintRange(r) { const min = +r.min, max = +r.max; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); }
+  function stateText(d) {
+    if (d.power === false) return T('off');
+    if (!d.available) return d.kind === 'sonos' ? T('starting or not reachable') : T('not available');
+    if (d.syncedTo && dev(d.syncedTo)) return (d.coupled ? T('Coupled with') : T('Plays in sync with')) + ' ' + dev(d.syncedTo).name;
+    if (d.state === 'playing') return [d.title, d.artist].filter(Boolean).join(' – ') || T('playing');
+    if (d.state === 'paused') return T('paused') + (d.title ? ': ' + d.title : '');
+    return T('ready');
+  }
+
+  // ---------- Navigation ----------
+  function show(v) {
+    document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
+    document.querySelectorAll('.view').forEach((x) => x.classList.toggle('active', x.id === 'v-' + v));
+    if (v === 'lib' && !SR.browse && SR.state.hasSonos) doBrowse();
+  }
+  document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.v)));
+
+  // ---------- Pulldowns (gemeinsames aktuelles Gerät) ----------
+  function ensureCurrent() {
+    const list = SR.state.devices;
+    if (SR.current && dev(SR.current)) return;
+    const playing = list.find((d) => d.available && d.state === 'playing');
+    SR.current = (playing || list.find((d) => d.available) || list[0] || {}).id || null;
+  }
+  function optionLabel(d) {
+    let s = d.name;
+    if (d.master) s += ' ★ ' + T('Master');
+    else if (d.syncedTo) s += ' · ' + T('Group');
+    if (d.power === false) s += ' (' + T('off') + ')';
+    return s;
+  }
+  function renderPickers() {
+    ensureCurrent();
+    const all = SR.state.devices;
+    $('nowSel').innerHTML = all.map((d) => `<option value="${esc(d.id)}" ${d.id === SR.current ? 'selected' : ''}>${esc(optionLabel(d))}</option>`).join('');
+    const media = all.filter((d) => d.caps && d.caps.media);
+    document.querySelectorAll('select[data-target]').forEach((s) => {
+      s.innerHTML = media.map((d) => `<option value="${esc(d.id)}" ${d.id === SR.current ? 'selected' : ''} ${d.available ? '' : 'disabled'}>${esc(optionLabel(d))}</option>`).join('')
+        || `<option value="">${T('No Sonos device')}</option>`;
+    });
+  }
+  function onPick(e) { SR.current = e.target.value; renderPickers(); renderNow(); }
+  $('nowSel').addEventListener('change', onPick);
+  document.querySelectorAll('select[data-target]').forEach((s) => s.addEventListener('change', onPick));
+  function target() {
+    const d = dev(SR.current);
+    if (!d || !d.caps.media) { toast(T('Select a Sonos device')); return null; }
+    if (!d.available) { toast(T('The device is switched off')); return null; }
+    return d.id;
+  }
+
+  // ---------- Jetzt läuft ----------
+  function renderNow() {
+    const d = dev(SR.current);
+    if (!d) { $('nowBox').innerHTML = `<div class="empty">${T('No devices configured')}</div>`; return; }
+    const lead = d.syncedTo && dev(d.syncedTo) ? dev(d.syncedTo) : d;
+    const active = d.available && (lead.state === 'playing' || lead.state === 'paused');
+    let html = `<div class="np"><div class="cover">${lead.image && d.available ? `<img src="${esc(lead.image)}" onerror="this.remove()">` : svg(d.kind === 'sonos' ? 'note' : 'speaker')}</div>
+      <div class="meta"><div class="t">${esc(active && lead.title ? lead.title : d.name)}</div><div class="a">${esc(active && lead.title ? lead.artist : stateText(d))}</div></div>`;
+    if (d.power === false) {
+      html += `<button class="btn fill" data-power="1">${svg('power')}${T('Switch on')}</button>`;
+    } else if (d.available) {
+      if (d.caps.transport) {
+        html += `<div class="ctrl">
+          <button class="ib" data-c="previous">${svg('prev')}</button>
+          <button class="ib main" data-c="play_pause">${svg(lead.state === 'playing' ? 'pause' : 'play')}</button>
+          <button class="ib" data-c="next">${svg('next')}</button>
+          ${d.caps.media && active ? `<button class="ib sm" data-favnow="1" title="${T('Save as favorite')}">${svg('starO')}</button>` : ''}
+        </div>`;
+      }
+      html += volumeRow(d);
+      if (d.caps.power) html += `<button class="btn" data-power="1">${svg('power')}${T('Switch off')}</button>`;
+    }
+    $('nowBox').innerHTML = html + '</div>';
+    bindControls($('nowBox'), d);
+    const fn = $('nowBox').querySelector('[data-favnow]');
+    if (fn) fn.onclick = () => send('favNow', { id: d.id });
+  }
+
+  function volumeRow(d) {
+    if (d.volume === null || d.volume === undefined || !d.available) return '';
+    const m = d.muted === null || d.muted === undefined ? '' : `<button class="ib sm ${d.muted ? 'on' : ''}" data-mute="1">${svg(d.muted ? 'mute' : 'vol')}</button>`;
+    return `<div class="vol">${m || `<span class="ib sm">${svg('vol')}</span>`}<input type="range" min="0" max="100" step="1" value="${d.volume}" data-vol="1"><span class="v">${d.volume}%</span></div>`;
+  }
+
+  function bindControls(root, d) {
+    root.querySelectorAll('[data-c]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send('cmd', { id: d.id, cmd: b.dataset.c }); });
+    root.querySelectorAll('[data-mute]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send('mute', { id: d.id, value: !d.muted }); });
+    root.querySelectorAll('[data-power]').forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const on = d.power === false;
+      if (!on && d.master && !confirm(T('Switching off the master ends the group. Continue?'))) return;
+      send('power', { id: d.id, value: on });
+    });
+    root.querySelectorAll('[data-vol]').forEach((r) => {
+      const lab = r.parentElement.querySelector('.v');
+      paintRange(r);
+      r.oninput = () => { SR.drag[d.id] = true; lab.textContent = r.value + '%'; paintRange(r); };
+      r.onchange = () => { SR.drag[d.id] = false; send('volume', { id: d.id, value: parseInt(r.value, 10) }); };
+    });
+  }
+
+  // ---------- Geräte ----------
+  function renderDevices() {
+    const list = SR.state.devices;
+    if (!list.length) { $('devList').innerHTML = `<div class="empty">${T('No devices configured')}</div>`; return; }
+    const master = list.find((d) => d.master);
+    $('devList').innerHTML = list.map((d) => devHTML(d, master)).join('');
+    list.forEach((d) => bindDevice(d, master));
+  }
+  function devHTML(d, master) {
+    const badge = d.master ? `<span class="badge">${T('Master')}</span>` : (d.syncedTo ? `<span class="badge f">${T(d.coupled ? 'coupled' : 'Group')}</span>` : '');
+    const active = d.available && d.caps.transport && (d.state === 'playing' || d.state === 'paused') && !d.syncedTo;
+    let rows = '';
+    // Master: nur Sonos, eingeschaltet und nicht selbst Mitglied einer Gruppe
+    if (d.caps.group && d.available && (!d.syncedTo || d.master)) {
+      const names = (d.members || []).map((m) => (dev(m) || {}).name || m).join(', ');
+      rows += `<div class="row"><span class="lbl">${T('Master')}</span><span class="s">${d.master && names ? T('Plays with') + ' ' + esc(names) : T('Selected devices play along')}</span><button class="switch ${d.master ? 'on' : ''}" data-master="1"></button></div>`;
+    }
+    // Auswahl für die Gruppe: jedes Gerät außer dem Master, auch im ausgeschalteten Zustand
+    if (!d.master) {
+      rows += `<div class="row"><span class="lbl">${T('Group')}</span><span class="s">${esc(groupText(d, master))}</span><button class="switch ${d.selected ? 'on' : ''}" data-select="1"></button></div>`;
+    }
+    return `<div class="dev ${d.available ? '' : 'off'}" id="dev-${esc(d.id)}">
+      <div class="head">
+        ${thumb(d.available ? d.image : '', 'speaker')}
+        <div class="txt"><div class="n">${esc(d.name)}${badge}</div><div class="s">${esc(stateText(d))}</div></div>
+        ${d.kind !== 'sonos' ? `<span class="tag">${T('external')}</span>` : ''}
+        ${active ? `<button class="ib sm" data-c="play_pause">${svg(d.state === 'playing' ? 'pause' : 'play')}</button>` : ''}
+        ${d.caps.power ? `<button class="switch ${d.power ? 'on' : ''}" data-power="1" title="${T('Power')}"></button>` : ''}
+      </div>
+      ${volumeRow(d)}${rows}</div>`;
+  }
+  function bindDevice(d, master) {
+    const root = document.getElementById('dev-' + d.id);
+    if (!root) return;
+    bindControls(root, d);
+    const ms = root.querySelector('[data-master]');
+    if (ms) ms.onclick = () => { ms.classList.toggle('on'); send('master', { id: d.id, value: !d.master }); };
+    const sel = root.querySelector('[data-select]');
+    if (sel) sel.onclick = () => { sel.classList.toggle('on'); send('select', { id: d.id, value: !d.selected }); };
+  }
+  function groupText(d, master) {
+    if (!d.selected) return T('Not in the group');
+    if (!master) return T('Selected – starts with the master');
+    if (d.kind !== 'sonos') return d.coupled ? T('Coupled with') + ' ' + master.name : T('Joining …');
+    if (d.syncedTo === master.id) return T('Plays in sync with') + ' ' + master.name;
+    if (!d.available) return T('Selected – joins when switched on');
+    return T('Joining …');
+  }
+
+  // ---------- Favoriten ----------
+  function favList(t) { return ((SR.state.favs || {})[t] || []); }
+  function renderFavs() {
+    $('favTypeChips').innerHTML = Object.keys(TYPES).map((t) => {
+      const n = favList(t).filter(Boolean).length;
+      return `<button class="chip ${SR.favType === t ? 'on' : ''}" data-t="${t}">${T(TYPES[t])}${n ? ' · ' + n : ''}</button>`;
+    }).join('');
+    $('favTypeChips').querySelectorAll('.chip').forEach((c) => c.onclick = () => { SR.favType = c.dataset.t; renderFavs(); });
+    $('favEdit').textContent = T(SR.favEdit ? 'Done' : 'Edit');
+    $('favEdit').classList.toggle('on', SR.favEdit);
+    const list = favList(SR.favType);
+    const icon = ICON[SR.favType];
+    let html = '';
+    for (let i = 0; i < 20; i++) {
+      const f = list[i];
+      if (!f) {
+        html += `<div class="slot free"><span class="no">${i + 1}</span>${thumb('', icon)}<div class="txt"><div class="n">${T('Free')}</div></div>${SR.favEdit && i > 0 ? `<button class="ib sm" data-move="-1" data-i="${i}">${svg('up')}</button>` : ''}</div>`;
+      } else if (SR.favEdit) {
+        html += `<div class="slot"><span class="no">${i + 1}</span>${thumb(f.image, icon)}<div class="txt"><input value="${esc(f.name)}" data-rename="${i}" maxlength="80"></div>
+          <button class="ib sm" data-move="-1" data-i="${i}" ${i === 0 ? 'disabled' : ''}>${svg('up')}</button><button class="ib sm" data-move="1" data-i="${i}" ${i === 19 ? 'disabled' : ''}>${svg('down')}</button><button class="ib sm" data-del="${i}" title="${T('Delete')}">${svg('del')}</button></div>`;
+      } else {
+        html += `<div class="slot fill" data-play="${i}"><span class="no">${i + 1}</span>${thumb(f.image, icon)}<div class="txt"><div class="n">${esc(f.name)}</div><div class="s">${esc(f.sub)}</div></div><button class="ib sm">${svg('play')}</button></div>`;
+      }
+    }
+    if (!list.some(Boolean)) html = `<div class="hint" style="padding:6px 0 10px">${T('Save favorites with the star in Library or Now playing.')}</div>` + html;
+    $('favList').innerHTML = html;
+    $('favList').querySelectorAll('[data-play]').forEach((el) => el.onclick = () => {
+      const id = target(); if (!id) return;
+      send('playFav', { type: SR.favType, slot: +el.dataset.play, id });
+      toast(T('Starting …'));
+    });
+    $('favList').querySelectorAll('[data-move]').forEach((b) => b.onclick = () => send('favMove', { type: SR.favType, slot: +b.dataset.i, dir: +b.dataset.move }));
+    $('favList').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => send('favDelete', { type: SR.favType, slot: +b.dataset.del }));
+    $('favList').querySelectorAll('[data-rename]').forEach((inp) => {
+      inp.onchange = () => send('favRename', { type: SR.favType, slot: +inp.dataset.rename, name: inp.value });
+      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+    });
+  }
+  $('favEdit').onclick = () => { SR.favEdit = !SR.favEdit; renderFavs(); };
+  function isFav(type, uri) { return favList(type).some((f) => f && f.uri === uri); }
+
+  // ---------- Bibliothek ----------
+  function renderLibChrome() {
+    $('srcChips').innerHTML = Object.keys(SOURCES).map((s) => `<button class="chip ${SR.source === s ? 'on' : ''}" data-s="${s}">${T(SOURCES[s])}</button>`).join('');
+    $('srcChips').querySelectorAll('.chip').forEach((c) => c.onclick = () => { SR.source = c.dataset.s; renderLibChrome(); doBrowse(); });
+    $('saveAs').innerHTML = `<option value="">${T('Automatic')}</option>` + Object.keys(TYPES).map((t) => `<option value="${t}" ${SR.saveAs === t ? 'selected' : ''}>${T(TYPES[t])}</option>`).join('');
+  }
+  $('saveAs').addEventListener('change', (e) => { SR.saveAs = e.target.value; });
+  function doBrowse() {
+    if (!SR.state.hasSonos) { $('results').innerHTML = `<div class="empty">${T('No Sonos device configured')}</div>`; return; }
+    $('q').blur();
+    $('results').innerHTML = `<div class="empty">${T('Loading …')}</div>`;
+    send('browse', { source: SR.source, query: $('q').value.trim() });
+  }
+  $('qbtn').onclick = doBrowse;
+  $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doBrowse(); } });
+  function renderBrowse(msg) {
+    SR.browse = msg;
+    if (msg.source !== SR.source) return;
+    const items = msg.items || [];
+    let html = '';
+    if (!items.length) html = `<div class="empty">${T(['artist', 'album', 'track'].includes(msg.source) && !msg.query ? 'Enter a search term' : 'No entries')}</div>`;
+    items.forEach((it) => {
+      const fav = isFav(SR.saveAs || it.type, it.uri);
+      html += `<div class="item" data-idx="${it.idx}">${thumb(it.image, ICON[it.type] || 'note')}<div class="txt"><div class="n">${esc(it.name)}</div><div class="s">${esc(it.sub)}</div></div>
+        <span class="tag">${T(TYPES[it.type] || it.type)}</span>
+        <button class="ib sm ${fav ? 'on' : ''}" data-fav="${it.idx}" title="${T('Save as favorite')}">${svg(fav ? 'star' : 'starO')}</button><button class="ib sm">${svg('play')}</button></div>`;
+    });
+    if (msg.total > items.length && items.length) html += `<div class="hint" style="padding:8px">${items.length} / ${msg.total} – ${T('narrow down with the search')}</div>`;
+    $('results').innerHTML = html;
+    $('results').querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send('favAddBrowse', { idx: +b.dataset.fav, type: SR.saveAs }); });
+    $('results').querySelectorAll('.item').forEach((el) => el.onclick = () => {
+      const id = target(); if (!id) return;
+      send('playBrowse', { idx: +el.dataset.idx, id });
+      toast(T('Starting …'));
+    });
+  }
+
+  function renderAll() { renderPickers(); renderNow(); renderDevices(); renderFavs(); renderLibChrome(); }
+
+  // ---------- Nachrichten vom Modul ----------
+  function handleMessage(data) {
+    const msg = typeof data === 'string' ? JSON.parse(data) : data;
+    switch (msg.type) {
+      case 'full':
+        SR.state = msg.state;
+        if (Object.values(SR.drag).some(Boolean)) return;   // Regler wird gerade bewegt
+        renderPickers(); renderNow(); renderDevices(); renderFavs();
+        if (!$('srcChips').innerHTML) renderLibChrome();
+        break;
+      case 'favs':
+        SR.state.favs = msg.favs;
+        renderFavs();
+        if (SR.browse) renderBrowse(SR.browse);
+        break;
+      case 'browse':
+        renderBrowse(msg);
+        break;
+      case 'toast':
+        toast(msg.text);
+        break;
+    }
+  }
+  // feste Texte übersetzen
+  document.querySelectorAll('.nav span, .pick .label').forEach((el) => { el.textContent = T(el.textContent); });
+  $('q').placeholder = T($('q').placeholder);
+  renderAll();
+</script>
