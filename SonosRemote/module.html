@@ -57,10 +57,11 @@
   .vol { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; }
   .vol .v { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sr-muted); font-size: 13px; }
   .vol.wait { opacity: .45; }
-  .tone { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
-  .tone label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sr-muted); }
-  .tone select { appearance: none; -webkit-appearance: none; padding: 4px 22px 4px 8px; border-radius: 8px; border: 1px solid var(--sr-line); background: var(--sr-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23888' d='M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z'/%3E%3C/svg%3E") no-repeat right 4px center / 14px; color: inherit; font: inherit; font-size: 13px; cursor: pointer; font-variant-numeric: tabular-nums; }
-  .tone select option { color: #000; }
+  .tone { display: none; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--sr-line); }
+  .tone.open { display: block; }
+  .tone .trow { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+  .tone .trow > span:first-child { width: 92px; color: var(--sr-muted); font-size: 13px; flex: none; }
+  .tone .trow .v { width: 40px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--sr-muted); }
   input[type=range]:disabled { cursor: default; }
   input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: 26px; background: none; margin: 0; cursor: pointer; --p: 50%; }
   input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--sr-accent) var(--p), var(--sr-line) var(--p)); }
@@ -166,7 +167,7 @@
 </div>
 
 <script>
-  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', cat: {}, saveAs: '', drag: {}, browse: null, covers: {} };
+  const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', cat: {}, saveAs: '', drag: {}, browse: null, covers: {}, openTone: new Set() };
   // Cover: https-Adresse oder eingebettetes Bild ('cover:<hash>', kommt als eigene Nachricht)
   function coverSrc(u) { u = String(u || ''); return u.startsWith('cover:') ? (SR.covers[u.slice(6)] || '') : u; }
   const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums' };
@@ -192,6 +193,7 @@
     list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
     open: 'M8.6 16.6 13.2 12 8.6 7.4 10 6l6 6-6 6z',
     back: 'M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2z',
+    tone: 'M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z',
     folder: 'M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z'
   };
   const ICON = { playlist: 'list', radio: 'radio', track: 'note', artist: 'person', album: 'album' };
@@ -212,7 +214,7 @@
     el.querySelectorAll('img').forEach((img) => { const keep = (old[img.getAttribute('src')] || []).shift(); if (keep) img.replaceWith(keep); });
   }
   // Aktualisierungen während des Ziehens am Regler zurückhalten (höchstens 4 s, falls das Loslassen nicht ankommt)
-  function dragging() { return Object.values(SR.drag).some((t) => t && Date.now() - t < 4000) || (SR.selOpen && Date.now() - SR.selOpen < 15000); }
+  function dragging() { return Object.values(SR.drag).some((t) => t && Date.now() - t < 4000); }
   function flushPending() { if (SR.pending && !dragging()) { SR.pending = false; renderPickers(); renderNow(); renderDevices(); renderFavs(); } }
   // Zustand selbst abfragen: nach dem Ein-/Ausschalten (2 min) und solange ein Gerät hochfährt
   function schedulePoll() {
@@ -353,33 +355,35 @@
         <div class="txt"><div class="n">${esc(d.name)}${badge}</div><div class="s">${esc(stateText(d))}</div></div>
         ${d.kind !== 'sonos' ? `<span class="tag">${T('external')}</span>` : ''}
         ${active ? `<button class="ib sm" data-c="play_pause">${svg(d.state === 'playing' ? 'pause' : 'play')}</button>` : ''}
+        ${hasTone(d) ? `<button class="ib sm ${SR.openTone.has(d.id) ? 'on' : ''}" data-tone-toggle="1" title="${T('Sound')}">${svg('tone')}</button>` : ''}
         ${d.caps.power ? `<button class="switch ${d.power ? 'on' : ''}" data-power="1" title="${T('Power')}"></button>` : ''}
       </div>
       ${volumeRow(d)}${toneRow(d)}${rows}</div>`;
   }
-  // Klang (nur Sonos, nur was in der Sonos-Instanz freigeschaltet ist)
-  const TONE = { bass: 'Bass', treble: 'Treble', loudness: 'Loudness' };
+  // Klang (nur Sonos, nur was in der Sonos-Instanz freigeschaltet ist) – Untermenü über das Klang-Symbol
+  const has = (d, k) => d.tone && d.tone[k] !== undefined && d.tone[k] !== null;
+  function hasTone(d) { return d.available && (has(d, 'bass') || has(d, 'treble') || has(d, 'loudness')); }
+  const sign = (v) => (v > 0 ? '+' : '') + v;
   function toneRow(d) {
-    if (!d.tone || !d.available) return '';
-    const sel = (which, cur) => {
-      const opts = which === 'loudness'
-        ? [[1, T('on')], [0, T('off')]]
-        : Array.from({ length: 21 }, (_, i) => { const v = 10 - i; return [v, v > 0 ? '+' + v : String(v)]; });
-      const val = which === 'loudness' ? (cur ? 1 : 0) : cur;
-      return `<label>${T(TONE[which])}<select data-tone="${which}">${opts.map(([v, l]) => `<option value="${v}" ${v === val ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
-    };
-    const parts = Object.keys(TONE).filter((w) => d.tone[w] !== undefined && d.tone[w] !== null).map((w) => sel(w, d.tone[w]));
-    return parts.length ? `<div class="row tone"><span class="lbl">${T('Sound')}</span>${parts.join('')}</div>` : '';
+    if (!hasTone(d)) return '';
+    const slider = (k, label) => has(d, k) ? `<div class="trow"><span>${T(label)}</span><input type="range" min="-10" max="10" step="1" value="${d.tone[k]}" data-tone="${k}"><span class="v">${sign(d.tone[k])}</span></div>` : '';
+    const loud = has(d, 'loudness') ? `<div class="trow"><span>${T('Loudness')}</span><button class="switch ${d.tone.loudness ? 'on' : ''}" data-loud="1"></button></div>` : '';
+    return `<div class="tone ${SR.openTone.has(d.id) ? 'open' : ''}">${slider('bass', 'Bass')}${slider('treble', 'Treble')}${loud}</div>`;
   }
   function bindDevice(d, master) {
     const root = document.getElementById('dev-' + d.id);
     if (!root) return;
     bindControls(root, d);
-    root.querySelectorAll('[data-tone]').forEach((sl) => {
-      // solange das Menü offen ist, nicht neu aufbauen (sonst schließt es sich)
-      sl.onfocus = () => { SR.selOpen = Date.now(); };
-      sl.onblur = () => { SR.selOpen = 0; flushPending(); };
-      sl.onchange = () => { SR.selOpen = 0; send('tone', { id: d.id, which: sl.dataset.tone, value: parseInt(sl.value, 10) }); sl.blur(); flushPending(); };
+    const tg = root.querySelector('[data-tone-toggle]');
+    if (tg) tg.onclick = () => { SR.openTone.has(d.id) ? SR.openTone.delete(d.id) : SR.openTone.add(d.id); renderDevices(); };
+    const ld = root.querySelector('[data-loud]');
+    if (ld) ld.onclick = () => { ld.classList.toggle('on'); send('tone', { id: d.id, which: 'loudness', value: d.tone.loudness ? 0 : 1 }); };
+    root.querySelectorAll('[data-tone]').forEach((r) => {
+      const lab = r.parentElement.querySelector('.v');
+      paintRange(r);
+      r.oninput = () => { SR.drag[d.id] = Date.now(); lab.textContent = sign(+r.value); paintRange(r); };
+      r.onchange = () => { SR.drag[d.id] = 0; send('tone', { id: d.id, which: r.dataset.tone, value: parseInt(r.value, 10) }); flushPending(); };
+      r.onpointerup = r.ontouchend = r.onpointercancel = () => setTimeout(() => { if (SR.drag[d.id]) { SR.drag[d.id] = 0; flushPending(); } }, 400);
     });
     const sel = root.querySelector('[data-select]');
     if (sel) sel.onclick = () => { sel.classList.toggle('on'); send('select', { id: d.id, value: !d.selected }); };

@@ -28,7 +28,7 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
   vom Dienst; ohne Suchbegriff zeigt die Kachel die Startebene des Dienstes (z. B. „Meine Musik“). Interpreten und
   Ordner lassen sich öffnen, Alben/Playlists/Titel abspielen und als Favorit speichern.
 - **Internetradio (TuneIn):** Sendersuche und Rubriken (Lokale Sender, Musik, …) ohne Konto.
-- **Klang je Sonos-Gerät:** Bässe, Höhen und Loudness als Auswahl in der Geräteansicht – sofern in der Sonos-Instanz
+- **Klang je Sonos-Gerät:** Bässe und Höhen als Schieberegler, Loudness als Schalter im Klang-Untermenü der Gerätekarte – sofern in der Sonos-Instanz
   „Tiefen-“, „Höhen-“ bzw. „Loudness-Steuerung“ eingeschaltet ist.
 - **Andere Geräte (nicht Sonos):** jede Instanz oder reine Variablen – An/Aus, Lautstärke, Stumm, Wiedergabe, Titel.
   Sie werden nicht gruppiert und spielen keine Favoriten ab (Kennzeichnung „extern“).
