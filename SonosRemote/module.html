@@ -266,7 +266,7 @@
     $('nowSel').innerHTML = all.map((d) => `<option value="${esc(d.id)}" ${d.id === SR.current ? 'selected' : ''}>${esc(optionLabel(d))}</option>`).join('');
     const media = all.filter((d) => d.caps && d.caps.media);
     document.querySelectorAll('select[data-target]').forEach((s) => {
-      s.innerHTML = media.map((d) => `<option value="${esc(d.id)}" ${d.id === SR.current ? 'selected' : ''} ${d.available ? '' : 'disabled'}>${esc(optionLabel(d))}</option>`).join('')
+      s.innerHTML = media.map((d) => `<option value="${esc(d.id)}" ${d.id === SR.current ? 'selected' : ''}>${esc(optionLabel(d))}</option>`).join('')
         || `<option value="">${T('No Sonos device')}</option>`;
     });
   }
@@ -276,7 +276,8 @@
   function target() {
     const d = dev(SR.current);
     if (!d || !d.caps.media) { toast(T('Select a Sonos device')); return null; }
-    if (!d.available) { toast(T('The device is switched off')); return null; }
+    // ausgeschaltet: das Modul schaltet ein und startet die Wiedergabe, sobald das Gerät bereit ist
+    if (!d.available) { SR.pollUntil = Date.now() + 240000; schedulePoll(); }
     return d.id;
   }
 

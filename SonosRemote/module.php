@@ -149,7 +149,34 @@ class SonosRemote extends IPSModuleStrict
                 $this->SendDebug('Gruppe', $e->getMessage(), 0);
             }
         }
+        $this->RunPendingPlay();
         $this->PushFull();
+    }
+
+    /** Vorgemerkte Wiedergabe starten, sobald das eingeschaltete Gerät erreichbar ist */
+    private function RunPendingPlay(): void
+    {
+        $p = json_decode($this->GetBuffer('PendingPlay'), true);
+        if (!is_array($p)) {
+            return;
+        }
+        $dev = $this->Devices()[(string) $p['device']] ?? null;
+        if (!$dev instanceof SonosDevice || time() > (int) $p['until']) {
+            $this->SetBuffer('PendingPlay', '');
+            $this->Toast($this->Translate('Playback cancelled – the device did not start'));
+            return;
+        }
+        if (!$dev->Available()) {
+            return;   // fährt noch hoch
+        }
+        try {
+            $this->SetBuffer('PendingPlay', '');
+            $this->PlayOn((array) $p['item'], (string) $p['device']);
+        } catch (Throwable $e) {
+            // kurz nach dem Hochfahren kann der Player noch ablehnen: beim nächsten Durchlauf erneut versuchen
+            $this->SendDebug('PendingPlay', $e->getMessage(), 0);
+            $this->SetBuffer('PendingPlay', json_encode($p));
+        }
     }
 
     /**
@@ -664,7 +691,7 @@ class SonosRemote extends IPSModuleStrict
         $this->ResolveCovers($list, $devs);
         // eingeschaltet, aber noch nicht erreichbar: alle 10 s neu prüfen
         $starting = count(array_filter($list, fn ($s) => ($s['kind'] ?? '') === 'sonos' && ($s['power'] ?? null) === true && empty($s['available'])));
-        $this->SetTimerInterval('Startup', $starting > 0 ? 10000 : 0);
+        $this->SetTimerInterval('Startup', ($starting > 0 || $this->GetBuffer('PendingPlay') !== '') ? 10000 : 0);
         // Gruppen: tatsächlicher Stand vom Player, ersatzweise aus der Variable „Teil der Gruppe“
         $topo = [];
         foreach ($devs as $d) {
@@ -824,6 +851,16 @@ class SonosRemote extends IPSModuleStrict
         }
         if (!$dev->Capabilities()['media']) {
             throw new Exception(sprintf($this->Translate('%s cannot play favorites'), $dev instanceof SNRBaseDevice ? $dev->Name() : $Device));
+        }
+        // ausgeschaltet bzw. fährt noch hoch: einschalten und die Wiedergabe vormerken (startet, sobald erreichbar)
+        if ($dev instanceof SonosDevice && !$dev->Available()) {
+            if ($dev->Power() === false) {
+                $dev->SetPower(true);
+            }
+            $this->SetBuffer('PendingPlay', json_encode(['item' => $Item, 'device' => $dev->Key(), 'until' => time() + 240]));
+            $this->Toast(sprintf($this->Translate('%s is switching on – playback starts automatically'), $dev->Name()));
+            $this->PushFull();
+            return true;
         }
         // Podcast: die neuesten Folgen (bis 20, neueste zuerst) in die Warteschlange
         if (str_starts_with((string) ($Item['uri'] ?? ''), 'podcast:')) {
