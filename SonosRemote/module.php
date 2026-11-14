@@ -181,6 +181,16 @@ class SonosRemote extends IPSModuleStrict
                 case 'mute':
                     $this->Device($id)->SetMute((bool) ($v['value'] ?? false));
                     break;
+                case 'position':
+                    $this->SendPosition($id);
+                    break;
+                case 'seek':
+                    $dev = $this->Device($id);
+                    if ($dev instanceof SonosDevice) {
+                        $dev->Seek((int) ($v['value'] ?? 0));
+                        $this->SendPosition($id);
+                    }
+                    break;
                 case 'airplay':
                     $this->StartAirPlay($id);
                     break;
@@ -374,6 +384,17 @@ class SonosRemote extends IPSModuleStrict
         }
         $dev->SetTone($Setting, $Value);
         return true;
+    }
+
+    /** Position im laufenden Titel an die Kachel (die Kachel zählt selbst weiter und fragt alle 10 s nach) */
+    private function SendPosition(string $Device): void
+    {
+        $dev = $this->Device($Device);
+        if (!$dev instanceof SonosDevice || !$dev->Available()) {
+            return;
+        }
+        $p = $dev->Position();
+        $this->UpdateVisualizationValue(json_encode(['type' => 'pos', 'id' => $Device, 'pos' => $p['pos'], 'dur' => $p['dur']]));
     }
 
     /** Kompatibilität: Gerät der Gruppe hinzufügen bzw. herausnehmen */

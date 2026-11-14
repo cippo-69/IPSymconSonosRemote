@@ -57,6 +57,9 @@
   .vol { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; }
   .vol .v { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sr-muted); font-size: 13px; }
   .vol.wait { opacity: .45; }
+  .prog { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; font-size: 12px; color: var(--sr-muted); font-variant-numeric: tabular-nums; }
+  .prog span { width: 44px; flex: none; }
+  .prog span:last-child { text-align: right; }
   .tone { display: none; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--sr-line); }
   .tone.open { display: block; }
   .tone .trow { display: flex; align-items: center; gap: 8px; min-height: 30px; }
@@ -288,6 +291,8 @@
     if (d.power === false) {
       html += `<button class="btn fill" data-power="1">${svg('power')}${T('Switch on')}</button>`;
     } else if (d.available) {
+      // Fortschritt (nur Sonos, nur Titel mit Länge – bei Radio/AirPlay ausgeblendet)
+      if (d.kind === 'sonos' && active) html += `<div class="prog" id="prog" style="display:none"><span id="posCur">0:00</span><input type="range" min="0" max="1" step="1" value="0" id="posRange"><span id="posDur"></span></div>`;
       if (d.caps.transport) {
         html += `<div class="ctrl">
           <button class="ib" data-c="previous">${svg('prev')}</button>
@@ -307,6 +312,54 @@
     bindControls($('nowBox'), d);
     const fn = $('nowBox').querySelector('[data-favnow]');
     if (fn) fn.onclick = () => send('favNow', { id: d.id });
+    bindProgress(d, lead, active);
+  }
+
+  // ---------- Fortschritt im Titel ----------
+  const fmt = (t) => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = String(t % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`; };
+  function curPos() {
+    const p = SR.pos;
+    if (!p) return 0;
+    return Math.min(p.dur, p.pos + (p.playing ? (Date.now() - p.at) / 1000 : 0));
+  }
+  function paintProgress() {
+    const box = $('prog'), r = $('posRange');
+    if (!box || !r) return;
+    const p = SR.pos;
+    const ok = p && p.id === SR.current && p.dur > 0;
+    box.style.display = ok ? '' : 'none';
+    if (!ok || SR.drag.seek) return;
+    r.max = p.dur; r.value = Math.floor(curPos());
+    $('posCur').textContent = fmt(curPos()); $('posDur').textContent = fmt(p.dur);
+    paintRange(r);
+  }
+  function bindProgress(d, lead, active) {
+    const playing = active && lead.state === 'playing';
+    // anderes Gerät oder anderer Titel: Position neu holen
+    const key = d.id + '|' + lead.title + '|' + lead.artist;
+    if (active && (SR.posKey !== key || !SR.pos || SR.pos.id !== d.id)) { SR.posKey = key; send('position', { id: d.id }); }
+    if (SR.pos && SR.pos.id === d.id && SR.pos.playing !== playing) { SR.pos.pos = curPos(); SR.pos.at = Date.now(); SR.pos.playing = playing; }
+    const r = $('posRange');
+    if (r) {
+      r.oninput = () => { SR.drag.seek = Date.now(); $('posCur').textContent = fmt(+r.value); paintRange(r); };
+      r.onchange = () => {
+        SR.drag.seek = 0;
+        if (SR.pos) { SR.pos.pos = +r.value; SR.pos.at = Date.now(); }
+        send('seek', { id: d.id, value: parseInt(r.value, 10) });
+        flushPending();
+      };
+      r.onpointerup = r.ontouchend = r.onpointercancel = () => setTimeout(() => { if (SR.drag.seek) { SR.drag.seek = 0; flushPending(); } }, 400);
+    }
+    paintProgress();
+    // jede Sekunde weiterzählen, alle 10 s beim Player nachfragen
+    clearInterval(SR.posTimer);
+    if (active) {
+      let n = 0;
+      SR.posTimer = setInterval(() => {
+        paintProgress();
+        if (++n % 10 === 0 && document.querySelector('#v-now.active')) send('position', { id: d.id });
+      }, 1000);
+    }
   }
 
   function volumeRow(d) {
@@ -550,6 +603,13 @@
         SR.covers[msg.hash] = msg.data;
         if (SR.state.devices.length) { renderNow(); renderDevices(); }
         break;
+      case 'pos': {
+        const d = dev(msg.id);
+        const lead = d && d.syncedTo && dev(d.syncedTo) ? dev(d.syncedTo) : d;
+        SR.pos = { id: msg.id, pos: msg.pos, dur: msg.dur, at: Date.now(), playing: !!lead && lead.state === 'playing' };
+        paintProgress();
+        break;
+      }
       case 'toast':
         toast(msg.text);
         break;

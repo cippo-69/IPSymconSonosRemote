@@ -713,6 +713,23 @@ class SonosDevice extends SNRBaseDevice
     /**
      * Adresse des Covers bzw. Senderlogos der laufenden Wiedergabe – direkt vom Player (unabhängig von der Variable CoverURL).
      */
+    /** Position und Länge des laufenden Titels in Sekunden (dur 0 = Stream/AirPlay ohne Länge) */
+    public function Position(): array
+    {
+        $p = $this->UPnP($this->Coordinator())->GetPositionInfo();
+        $dur = SonosUPnP::Seconds((string) ($p['TrackDuration'] ?? ''));
+        $pos = SonosUPnP::Seconds((string) ($p['RelTime'] ?? ''));
+        return ['pos' => max(0, $pos), 'dur' => max(0, $dur)];
+    }
+
+    public function Seek(int $Seconds): void
+    {
+        if (!$this->Available()) {
+            throw new Exception($this->Name() . ' ist ausgeschaltet');
+        }
+        $this->UPnP($this->Coordinator())->Seek($Seconds);
+    }
+
     public function CoverUrl(): string
     {
         $coord = $this->Coordinator();

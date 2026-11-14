@@ -76,6 +76,26 @@ class SonosUPnP
         return (array) $this->call(self::AVT, 'GetPositionInfo', [new SoapParam('0', 'InstanceID')]);
     }
 
+    /** Im laufenden Titel springen (Sekunden ab Titelanfang) */
+    public function Seek(int $Seconds): void
+    {
+        $Seconds = max(0, $Seconds);
+        $this->call(self::AVT, 'Seek', [
+            new SoapParam('0', 'InstanceID'),
+            new SoapParam('REL_TIME', 'Unit'),
+            new SoapParam(sprintf('%d:%02d:%02d', intdiv($Seconds, 3600), intdiv($Seconds % 3600, 60), $Seconds % 60), 'Target')
+        ]);
+    }
+
+    /** „H:MM:SS“ in Sekunden; -1 bei fehlender Angabe (Streams: NOT_IMPLEMENTED) */
+    public static function Seconds(string $Time): int
+    {
+        if (!preg_match('~^(\d+):(\d{1,2}):(\d{1,2})~', trim($Time), $m)) {
+            return -1;
+        }
+        return (int) $m[1] * 3600 + (int) $m[2] * 60 + (int) $m[3];
+    }
+
     /**
      * Medium abspielen. Streams/Radio direkt, alles andere (Playlist, Album, Interpret, Titel) über die Warteschlange.
      */
