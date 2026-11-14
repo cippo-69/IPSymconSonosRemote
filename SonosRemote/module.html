@@ -293,7 +293,7 @@
       html += `<button class="btn fill" data-power="1">${svg('power')}${T('Switch on')}</button>`;
     } else if (d.available) {
       // Fortschritt (nur Sonos, nur Titel mit Länge – bei Radio/AirPlay ausgeblendet)
-      if (d.kind === 'sonos' && active) html += `<div class="prog" id="prog" style="display:none"><span id="posCur">0:00</span><input type="range" min="0" max="1" step="1" value="0" id="posRange"><span id="posDur"></span></div>`;
+      if (d.kind === 'sonos') html += '<div id="progSlot"></div>';
       if (d.caps.transport) {
         html += `<div class="ctrl">
           <button class="ib" data-c="previous">${svg('prev')}</button>
@@ -309,59 +309,66 @@
       if (d.caps.power) html += `<button class="btn" data-power="1">${svg('power')}${T('Switch off')}</button>`;
     }
     if (canAirPlay(d)) html += `<button class="btn" data-airplay="1">${svg('airplay')}${T('AirPlay from iPhone')}</button>`;
+    // Fortschrittsanzeige über den Neuaufbau hinweg behalten (sonst verschwindet sie bei jeder Aktualisierung)
+    const prog = $('prog') || makeProgress();
+    prog.remove();
     setKeepingImages($('nowBox'), html + '</div>');
+    const slot = $('progSlot');
+    if (slot) slot.replaceWith(prog);
     bindControls($('nowBox'), d);
     const fn = $('nowBox').querySelector('[data-favnow]');
     if (fn) fn.onclick = () => send('favNow', { id: d.id });
-    bindProgress(d, lead, active);
+    // anderes Gerät oder anderer Titel: Position sofort neu holen
+    const key = d.id + '|' + lead.title + '|' + lead.artist;
+    if (d.available && SR.posKey !== key) { SR.posKey = key; send('position', { id: d.id }); }
+    paintProgress();
   }
 
   // ---------- Fortschritt im Titel ----------
+  // Sichtbar, solange der Player für das gewählte Gerät einen Titel mit Länge spielt oder pausiert.
+  // Die Kachel zählt jede Sekunde selbst weiter und fragt alle 10 s beim Player nach.
   const fmt = (t) => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = String(t % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`; };
   function curPos() {
     const p = SR.pos;
     if (!p) return 0;
     return Math.min(p.dur, p.pos + (p.playing ? (Date.now() - p.at) / 1000 : 0));
   }
+  function makeProgress() {
+    const box = document.createElement('div');
+    box.className = 'prog'; box.id = 'prog'; box.style.display = 'none';
+    box.innerHTML = '<span id="posCur">0:00</span><input type="range" min="0" max="1" step="1" value="0" id="posRange"><span id="posDur"></span>';
+    const r = box.querySelector('input');
+    r.oninput = () => { SR.drag.seek = Date.now(); box.querySelector('#posCur').textContent = fmt(+r.value); paintRange(r); };
+    r.onchange = () => {
+      SR.drag.seek = 0;
+      if (SR.pos) { SR.pos.pos = +r.value; SR.pos.at = Date.now(); }
+      if (SR.current) send('seek', { id: SR.current, value: parseInt(r.value, 10) });
+      flushPending();
+    };
+    r.onpointerup = r.ontouchend = r.onpointercancel = () => setTimeout(() => { if (SR.drag.seek) { SR.drag.seek = 0; flushPending(); } }, 400);
+    return box;
+  }
   function paintProgress() {
-    const box = $('prog'), r = $('posRange');
-    if (!box || !r) return;
+    const box = $('prog');
+    if (!box) return;
     const p = SR.pos;
-    const ok = p && p.id === SR.current && p.dur > 0;
+    const d = dev(SR.current);
+    const ok = p && d && p.id === d.id && d.available && p.dur > 0 && p.state !== 'STOPPED' && p.state !== 'NO_MEDIA_PRESENT';
     box.style.display = ok ? '' : 'none';
     if (!ok || SR.drag.seek) return;
+    const r = box.querySelector('input');
     r.max = p.dur; r.value = Math.floor(curPos());
-    $('posCur').textContent = fmt(curPos()); $('posDur').textContent = fmt(p.dur);
+    box.querySelector('#posCur').textContent = fmt(curPos());
+    box.querySelector('#posDur').textContent = fmt(p.dur);
     paintRange(r);
   }
-  function bindProgress(d, lead, active) {
-    const playing = active && lead.state === 'playing';
-    // anderes Gerät oder anderer Titel: Position neu holen
-    const key = d.id + '|' + lead.title + '|' + lead.artist;
-    if (active && (SR.posKey !== key || !SR.pos || SR.pos.id !== d.id)) { SR.posKey = key; send('position', { id: d.id }); }
-    if (SR.pos && SR.pos.id === d.id && SR.pos.playing !== playing) { SR.pos.pos = curPos(); SR.pos.at = Date.now(); SR.pos.playing = playing; }
-    const r = $('posRange');
-    if (r) {
-      r.oninput = () => { SR.drag.seek = Date.now(); $('posCur').textContent = fmt(+r.value); paintRange(r); };
-      r.onchange = () => {
-        SR.drag.seek = 0;
-        if (SR.pos) { SR.pos.pos = +r.value; SR.pos.at = Date.now(); }
-        send('seek', { id: d.id, value: parseInt(r.value, 10) });
-        flushPending();
-      };
-      r.onpointerup = r.ontouchend = r.onpointercancel = () => setTimeout(() => { if (SR.drag.seek) { SR.drag.seek = 0; flushPending(); } }, 400);
-    }
+  // ein Takt für die ganze Kachel (unabhängig vom Neuaufbau)
+  SR.posTick = 0;
+  setInterval(() => {
     paintProgress();
-    // jede Sekunde weiterzählen, alle 10 s beim Player nachfragen
-    clearInterval(SR.posTimer);
-    if (active) {
-      let n = 0;
-      SR.posTimer = setInterval(() => {
-        paintProgress();
-        if (++n % 10 === 0 && document.querySelector('#v-now.active')) send('position', { id: d.id });
-      }, 1000);
-    }
-  }
+    const d = dev(SR.current);
+    if (++SR.posTick % 10 === 0 && d && d.kind === 'sonos' && d.available && document.querySelector('#v-now.active')) send('position', { id: d.id });
+  }, 1000);
 
   function volumeRow(d) {
     if (d.volume === null || d.volume === undefined || d.power === false) return '';
@@ -605,9 +612,8 @@
         if (SR.state.devices.length) { renderNow(); renderDevices(); }
         break;
       case 'pos': {
-        const d = dev(msg.id);
-        const lead = d && d.syncedTo && dev(d.syncedTo) ? dev(d.syncedTo) : d;
-        SR.pos = { id: msg.id, pos: msg.pos, dur: msg.dur, at: Date.now(), playing: !!lead && lead.state === 'playing' };
+        const st = String(msg.state || '');
+        SR.pos = { id: msg.id, pos: msg.pos, dur: msg.dur, state: st, at: Date.now(), playing: st === 'PLAYING' || st === 'TRANSITIONING' };
         paintProgress();
         break;
       }

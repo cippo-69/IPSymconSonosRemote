@@ -234,9 +234,10 @@ class SonosRemote extends IPSModuleStrict
                     $this->PlayFavoriteOn((string) ($v['type'] ?? ''), (int) ($v['slot'] ?? -1) + 1, $id);
                     break;
                 case 'playBrowse':
-                    $item = $this->BrowseItem((int) ($v['idx'] ?? -1));
+                    $idx = (int) ($v['idx'] ?? -1);
+                    $item = $this->BrowseItem($idx);
                     if ($item) {
-                        $this->PlayOn($item, $id);
+                        $this->PlayOn($this->WithAlbumContext($item, $idx), $id);
                     }
                     break;
                 case 'browse':
@@ -421,7 +422,7 @@ class SonosRemote extends IPSModuleStrict
             return;
         }
         $p = $dev->Position();
-        $this->UpdateVisualizationValue(json_encode(['type' => 'pos', 'id' => $Device, 'pos' => $p['pos'], 'dur' => $p['dur']]));
+        $this->UpdateVisualizationValue(json_encode(['type' => 'pos', 'id' => $Device, 'pos' => $p['pos'], 'dur' => $p['dur'], 'state' => $p['state']]));
     }
 
     /** Kompatibilität: Gerät der Gruppe hinzufügen bzw. herausnehmen */
@@ -862,6 +863,12 @@ class SonosRemote extends IPSModuleStrict
             $this->PushFull();
             return true;
         }
+        // Titel aus einem Album/einer Playlist: ganze Liste, beginnend beim angetippten Titel
+        if (!empty($Item['tracks']) && $dev instanceof SonosDevice) {
+            $dev->PlayTracks((array) $Item['tracks'], (int) ($Item['start'] ?? 0));
+            $this->Toast(sprintf($this->Translate('Playing %s'), (string) ($Item['name'] ?? '')));
+            return true;
+        }
         // Podcast: die neuesten Folgen (bis 20, neueste zuerst) in die Warteschlange
         if (str_starts_with((string) ($Item['uri'] ?? ''), 'podcast:')) {
             if (!$dev instanceof SonosDevice) {
@@ -915,8 +922,38 @@ class SonosRemote extends IPSModuleStrict
         throw new Exception($this->Translate('No Sonos device is switched on'));
     }
 
+    /**
+     * Titel aus einem geöffneten Album/einer Playlist/einem Podcast: die ganze Liste einreihen und beim angetippten
+     * Titel beginnen (Vor/Zurück möglich). Treffer einer Suche bleiben einzeln.
+     */
+    private function WithAlbumContext(array $Item, int $Idx): array
+    {
+        $nav = json_decode($this->GetBuffer('Nav'), true);
+        $isTrack = ($Item['uri'] ?? '') !== '' && empty($Item['open']) && in_array($Item['type'] ?? '', ['track'], true);
+        if (!$isTrack || !is_array($nav) || empty($nav['stack'])) {
+            return $Item;
+        }
+        $list = json_decode($this->GetBuffer('Browse'), true);
+        $tracks = [];
+        $start = 0;
+        foreach ((array) $list as $i => $it) {
+            if (($it['uri'] ?? '') === '' || !empty($it['open']) || ($it['type'] ?? '') !== 'track') {
+                continue;
+            }
+            if ($i === $Idx) {
+                $start = count($tracks);
+            }
+            $tracks[] = ['uri' => $it['uri'], 'meta' => (string) ($it['meta'] ?? '')];
+        }
+        if (count($tracks) < 2) {
+            return $Item;
+        }
+        return $Item + ['tracks' => $tracks, 'start' => $start];
+    }
+
     private function Browse(string $Source, string $Query): void
     {
+        $this->SetBuffer('Nav', '');   // Sonos-Bibliothek: keine geöffneten Ordner der Musikdienste mehr
         if (!isset(self::SOURCES[$Source])) {
             return;
         }

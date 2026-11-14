@@ -683,18 +683,18 @@ class SonosDevice extends SNRBaseDevice
         if (!$this->Available()) {
             throw new Exception($this->Name() . ' ist ausgeschaltet');
         }
-        $coord = $this->Coordinator();
+        $coord = $this->PlayingCoordinator();
         $this->UPnP($coord)->PlayItem($Item, (string) IPS_GetProperty($coord, 'RINCON'));
     }
 
     /** Titel einzeln in die Warteschlange (Ersatzweg, wenn ein Album/eine Playlist des Dienstes nicht als Ganzes geht) */
-    public function PlayTracks(array $Items): void
+    public function PlayTracks(array $Items, int $Start = 0): void
     {
         if (!$this->Available()) {
             throw new Exception($this->Name() . ' ist ausgeschaltet');
         }
-        $coord = $this->Coordinator();
-        $this->UPnP($coord)->PlayTracks($Items, (string) IPS_GetProperty($coord, 'RINCON'));
+        $coord = $this->PlayingCoordinator();
+        $this->UPnP($coord)->PlayTracks($Items, (string) IPS_GetProperty($coord, 'RINCON'), $Start);
     }
 
     /** Kennung für Musikdienste; ersatzweise aus der MAC-Adresse in der RINCON gebildet */
@@ -716,10 +716,35 @@ class SonosDevice extends SNRBaseDevice
     /** Position und Länge des laufenden Titels in Sekunden (dur 0 = Stream/AirPlay ohne Länge) */
     public function Position(): array
     {
-        $p = $this->UPnP($this->Coordinator())->GetPositionInfo();
+        $u = $this->UPnP($this->PlayingCoordinator());
+        $p = $u->GetPositionInfo();
+        $t = $u->GetTransportInfo();
         $dur = SonosUPnP::Seconds((string) ($p['TrackDuration'] ?? ''));
         $pos = SonosUPnP::Seconds((string) ($p['RelTime'] ?? ''));
-        return ['pos' => max(0, $pos), 'dur' => max(0, $dur)];
+        return ['pos' => max(0, $pos), 'dur' => max(0, $dur), 'state' => (string) ($t['CurrentTransportState'] ?? '')];
+    }
+
+    /**
+     * Koordinator laut Player: Ein Gruppenmitglied spielt „x-rincon:RINCON_…“ – die Variable „Teil der Gruppe“
+     * kann davon abweichen. Ersatzweise die Variable.
+     */
+    public function PlayingCoordinator(): int
+    {
+        try {
+            $uri = (string) ($this->UPnP()->GetMediaInfo()['CurrentURI'] ?? '');
+            if (preg_match('~^x-rincon:(RINCON_[0-9A-Fa-f]+)~', $uri, $m)) {
+                foreach (IPS_GetInstanceListByModuleID(SNRDeviceFactory::SONOS_PLAYER) as $iid) {
+                    if (strcasecmp(trim((string) @IPS_GetProperty($iid, 'RINCON')), $m[1]) === 0) {
+                        return $iid;
+                    }
+                }
+            }
+            // eigenständig (auch ohne geladene Wiedergabe): das Gerät selbst
+            return $this->instance;
+        } catch (Throwable $e) {
+            // unten: Variable
+        }
+        return $this->Coordinator();
     }
 
     public function Seek(int $Seconds): void
@@ -727,7 +752,7 @@ class SonosDevice extends SNRBaseDevice
         if (!$this->Available()) {
             throw new Exception($this->Name() . ' ist ausgeschaltet');
         }
-        $this->UPnP($this->Coordinator())->Seek($Seconds);
+        $this->UPnP($this->PlayingCoordinator())->Seek($Seconds);
     }
 
     public function CoverUrl(): string

@@ -66,6 +66,11 @@ class SonosUPnP
         ]);
     }
 
+    public function GetTransportInfo(): array
+    {
+        return (array) $this->call(self::AVT, 'GetTransportInfo', [new SoapParam('0', 'InstanceID')]);
+    }
+
     public function GetMediaInfo(): array
     {
         return (array) $this->call(self::AVT, 'GetMediaInfo', [new SoapParam('0', 'InstanceID')]);
@@ -124,13 +129,17 @@ class SonosUPnP
      * Mehrere Titel der Reihe nach in die geleerte Warteschlange und abspielen
      * @param array $Items [['uri' => …, 'meta' => …]]
      */
-    public function PlayTracks(array $Items, string $Rincon): void
+    public function PlayTracks(array $Items, string $Rincon, int $Start = 0): void
     {
         $this->ClearQueue();
         foreach ($Items as $it) {
             $this->AddToQueue((string) $it['uri'], (string) ($it['meta'] ?? ''), false);
         }
         $this->SetAVTransportURI('x-rincon-queue:' . $Rincon . '#0');
+        if ($Start > 0) {
+            // beim angetippten Titel beginnen (Titelnummer in der Warteschlange, ab 1)
+            $this->call(self::AVT, 'Seek', [new SoapParam('0', 'InstanceID'), new SoapParam('TRACK_NR', 'Unit'), new SoapParam((string) ($Start + 1), 'Target')]);
+        }
         $this->Play();
     }
 
