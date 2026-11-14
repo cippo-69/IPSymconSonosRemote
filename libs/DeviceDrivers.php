@@ -427,6 +427,12 @@ class SonosDevice extends SNRBaseDevice
         return array_values(array_filter($ids));
     }
 
+    /** Kann AirPlay vom iPhone empfangen (Spalte „AirPlay“ in der Geräteliste) */
+    public function AirPlay(): bool
+    {
+        return !empty($this->row['AirPlay']);
+    }
+
     /** Klangeinstellungen: Ident in der Sonos-Instanz bzw. Variablenname (falls der Ident abweicht) */
     private const TONE = [
         'bass'     => [['Bass'], ['Tiefen', 'Bässe', 'Bass']],
@@ -485,6 +491,7 @@ class SonosDevice extends SNRBaseDevice
             'mute'      => $this->MuteVar() > 0,
             'transport' => true,
             'group'     => true,
+            'airplay'   => $this->AirPlay(),
             'media'     => true
         ];
     }

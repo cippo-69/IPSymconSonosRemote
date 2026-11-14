@@ -32,6 +32,15 @@
                     }
                 },
                 {
+                    "caption": "AirPlay",
+                    "name": "AirPlay",
+                    "width": "80px",
+                    "add": false,
+                    "edit": {
+                        "type": "CheckBox"
+                    }
+                },
+                {
                     "caption": "Power switch (e.g. Z2M plug)",
                     "name": "PowerVariable",
                     "width": "240px",
@@ -103,6 +112,10 @@
         {
             "type": "Label",
             "caption": "Group: select the devices with the switch „Group“ in the tile. The first selected Sonos device becomes master, Sonos devices play in sync with it. Other devices are coupled: they are switched on, set to the input above and follow play/pause/stop of the master."
+        },
+        {
+            "type": "Label",
+            "caption": "AirPlay: tick the Sonos devices that can receive AirPlay from the iPhone. „AirPlay“ in the tile switches such a device on, makes it master and lets the chosen device play along."
         },
         {
             "type": "NumberSpinner",

@@ -53,6 +53,7 @@ class SonosRemote extends IPSModuleStrict
         // solange ein Sonos-Gerät hochfährt, regelmäßig nachsehen (bis es erreichbar ist)
         $this->RegisterTimer('Startup', 0, 'SNR_Flush($_IPS[\'TARGET\']);');
         $this->RegisterAttributeString('WatchedInst', '[]');
+        $this->RegisterAttributeString('PreferredMaster', '');  // soll Master werden, sobald erreichbar (AirPlay-Empfänger)
 
         $this->SetVisualizationType(1);
     }
@@ -180,6 +181,9 @@ class SonosRemote extends IPSModuleStrict
                 case 'mute':
                     $this->Device($id)->SetMute((bool) ($v['value'] ?? false));
                     break;
+                case 'airplay':
+                    $this->StartAirPlay($id);
+                    break;
                 case 'tone':
                     $this->SetTone($id, (string) ($v['which'] ?? ''), (int) ($v['value'] ?? 0));
                     break;
@@ -294,6 +298,66 @@ class SonosRemote extends IPSModuleStrict
         }
         $this->WriteAttributeString('GroupSelection', json_encode($sel));
         $this->ApplyGroup();
+        $this->PushFull();
+        return true;
+    }
+
+    /**
+     * AirPlay vom iPhone auf $Device: Kann das Gerät selbst AirPlay, wird es eingeschaltet. Sonst wird ein AirPlay-fähiges
+     * Gerät (Spalte „AirPlay“, eingeschaltetes bevorzugt) eingeschaltet und Master, $Device spielt in der Gruppe mit.
+     * Am iPhone wird dann der Empfänger als AirPlay-Ziel gewählt.
+     */
+    public function StartAirPlay(string $Device): bool
+    {
+        $target = $this->Device($Device);
+        if (!$target instanceof SonosDevice) {
+            throw new Exception($this->Translate('Only Sonos devices can play AirPlay'));
+        }
+        $recv = null;
+        if ($target->AirPlay()) {
+            $recv = $target;
+        } else {
+            $cands = array_values(array_filter($this->Devices(), fn ($d) => $d instanceof SonosDevice && $d->AirPlay()));
+            if (!$cands) {
+                throw new Exception($this->Translate('No device for AirPlay configured (column „AirPlay“ in the device list)'));
+            }
+            foreach ($cands as $c) {
+                if ($c->Available()) {
+                    $recv = $c;
+                    break;
+                }
+            }
+            $recv = $recv ?? $cands[0];
+        }
+        $starting = false;
+        foreach (array_unique([$recv->Key(), $target->Key()]) as $k) {
+            $d = $this->Device($k);
+            if ($d->Power() === false) {
+                $d->SetPower(true);
+                $starting = true;
+            } elseif (!$d instanceof SonosDevice || !$d->Available()) {
+                $starting = true;
+            }
+        }
+        if ($recv !== $target) {
+            // Empfänger zuerst (wird Master), dann die bisherige Auswahl, dann das Zielgerät
+            $sel = array_values(array_diff($this->Selection(), [$recv->Key(), $target->Key()]));
+            $sel = array_merge([$recv->Key()], $sel, [$target->Key()]);
+            $this->WriteAttributeString('GroupSelection', json_encode($sel));
+            $this->WriteAttributeString('PreferredMaster', $recv->Key());
+            try {
+                $this->ApplyGroup();
+            } catch (Throwable $e) {
+                $this->SendDebug('AirPlay', $e->getMessage(), 0);
+            }
+            $text = sprintf($this->Translate('AirPlay: choose „%s“ on the iPhone – plays on %s'), $recv->Name(), $target->Name());
+        } else {
+            $text = sprintf($this->Translate('AirPlay: choose „%s“ on the iPhone'), $recv->Name());
+        }
+        if ($starting) {
+            $text = sprintf($this->Translate('Switching on – Sonos needs about a minute. %s'), $text);
+        }
+        $this->Toast($text);
         $this->PushFull();
         return true;
     }
@@ -415,16 +479,28 @@ class SonosRemote extends IPSModuleStrict
     private function ApplyGroup(string $Exclude = ''): void
     {
         $sel = $this->Selection();
+        $devs = $this->Devices();
+        // bevorzugter Master (AirPlay-Empfänger): gilt, solange er ausgewählt ist und nicht ausgeschaltet wird
+        $pref = $this->ReadAttributeString('PreferredMaster');
+        if ($pref !== '' && (!in_array($pref, $sel, true) || $pref === $Exclude || !($devs[$pref] ?? null) instanceof SonosDevice)) {
+            $pref = '';
+            $this->WriteAttributeString('PreferredMaster', '');
+        }
+        $prefReady = $pref !== '' && $devs[$pref]->Available();
         $master = $this->MasterDevice();
-        // Master abgewählt oder ausgeschaltet: Gruppe beenden, das nächste ausgewählte Gerät übernimmt
-        if ($master !== null && (!in_array($master->Key(), $sel, true) || $master->Key() === $Exclude)) {
+        // Master abgewählt oder ausgeschaltet bzw. der bevorzugte Master ist jetzt da: Gruppe neu bilden
+        if ($master !== null && (!in_array($master->Key(), $sel, true) || $master->Key() === $Exclude || ($prefReady && $master->Key() !== $pref))) {
             $this->EndGroup();
             $master = null;
         }
+        if ($master === null && $pref !== '' && !$prefReady) {
+            // auf den bevorzugten Master warten (fährt gerade hoch) – kein anderes Gerät vorziehen
+            $this->WriteAttributeString('GroupMaster', '');
+            return;
+        }
         if ($master === null) {
-            // Master wird das zuerst ausgewählte eingeschaltete Sonos-Gerät
-            $devs = $this->Devices();
-            foreach ($sel as $k) {
+            // Master wird der bevorzugte bzw. das zuerst ausgewählte eingeschaltete Sonos-Gerät
+            foreach ($pref !== '' ? [$pref] : $sel as $k) {
                 $d = $devs[$k] ?? null;
                 if ($d instanceof SonosDevice && $k !== $Exclude && $d->Available()) {
                     $master = $d;
@@ -523,7 +599,7 @@ class SonosRemote extends IPSModuleStrict
         $added = 0;
         foreach (IPS_GetInstanceListByModuleID(SNRDeviceFactory::SONOS_PLAYER) as $iid) {
             if (!in_array($iid, $have, true)) {
-                $rows[] = ['InstanceID' => $iid, 'Name' => '', 'PowerVariable' => 0, 'VolumeVariable' => 0, 'MuteVariable' => 0, 'StatusVariable' => 0, 'TitleVariable' => 0, 'SourceVariable' => 0, 'SourceValue' => ''];
+                $rows[] = ['InstanceID' => $iid, 'Name' => '', 'PowerVariable' => 0, 'VolumeVariable' => 0, 'MuteVariable' => 0, 'StatusVariable' => 0, 'TitleVariable' => 0, 'SourceVariable' => 0, 'SourceValue' => '', 'AirPlay' => false];
                 $added++;
             }
         }
@@ -592,6 +668,7 @@ class SonosRemote extends IPSModuleStrict
             'favs'     => $this->PublicFavorites(),
             'services' => $this->PublicServices(),
             'groupMaster' => $gm,
+            'airplay'     => count(array_filter($devs, fn ($d) => $d instanceof SonosDevice && $d->AirPlay())) > 0,
             'htmlVersion' => $this->HtmlVersion()
         ];
     }

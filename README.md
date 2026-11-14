@@ -30,6 +30,10 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
 - **Podcasts:** Suche im Podcast-Verzeichnis von Apple (ohne Konto), ohne Suchbegriff die Top-Podcasts. Podcast öffnen
   zeigt die Folgen (neueste zuerst); eine Folge spielt direkt auf dem gewählten Sonos-Gerät bzw. der Gruppe. Podcasts lassen
   sich als Favorit (Art „Podcasts“) speichern – abgespielt werden dann die neuesten Folgen, die neueste zuerst.
+- **AirPlay vom iPhone:** In der Geräteliste die AirPlay-fähigen Sonos-Geräte ankreuzen (Spalte „AirPlay“). „AirPlay“ in der
+  Kachel schaltet den Empfänger ein (falls aus), macht ihn zum Master und lässt das gewählte Gerät mitspielen; kann das
+  Gerät selbst AirPlay, wird nur es eingeschaltet. Fährt der Empfänger noch hoch, wird die Gruppe gebildet, sobald er
+  erreichbar ist. Am iPhone dann den Empfänger als AirPlay-Ziel wählen – starten lässt sich AirPlay nur am iPhone.
 - **Internetradio (TuneIn):** Sendersuche und Rubriken (Lokale Sender, Musik, …) ohne Konto.
 - **Klang je Sonos-Gerät:** Bässe und Höhen als Schieberegler, Loudness als Schalter im Klang-Untermenü der Gerätekarte – sofern in der Sonos-Instanz
   „Tiefen-“, „Höhen-“ bzw. „Loudness-Steuerung“ eingeschaltet ist.
@@ -70,6 +74,7 @@ und „Mute-Steuerung“, wenn der Stumm-Knopf erscheinen soll.
 SNR_PlayFavorite($id, 'radio', 3, '12345');  // Art, Platz 1–20, Instanz-ID des Geräts ('' = erstes eingeschaltetes Sonos-Gerät)
 SNR_SetPower($id, '12345', true);           // Gerät ein/aus
 SNR_SelectForGroup($id, '23456', true);     // Gerät für die Gruppe auswählen/abwählen (das erste ausgewählte wird Master)
+SNR_StartAirPlay($id, '12345');            // AirPlay-Empfänger einschalten, Master werden, Gerät 12345 spielt mit
 SNR_SetTone($id, '12345', 'bass', 3);       // Klang: 'bass'/'treble' -10…10, 'loudness' 0/1 (wenn in der Sonos-Instanz freigeschaltet)
 SNR_GetFavorites($id);                      // JSON aller Favoriten
 ```
