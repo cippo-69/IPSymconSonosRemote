@@ -107,7 +107,14 @@ class SonosRemote extends IPSModuleStrict
         }
         $initial .= '<script>handleMessage(' . json_encode(json_encode(['type' => 'full', 'state' => $state])) . ');</script>';
         $accent = sprintf('#%06X', $this->ReadPropertyInteger('AccentColor') & 0xFFFFFF);
-        return file_get_contents(__DIR__ . '/module.html') . '<style>:root{--sr-accent:' . $accent . ';}</style>' . $initial;
+        // Version des Kachel-Codes: veraltete (zwischengespeicherte) Kacheln laden sich damit selbst neu
+        $ver = '<script>SR.htmlVersion = ' . json_encode($this->HtmlVersion()) . ';</script>';
+        return file_get_contents(__DIR__ . '/module.html') . '<style>:root{--sr-accent:' . $accent . ';}</style>' . $ver . $initial;
+    }
+
+    private function HtmlVersion(): string
+    {
+        return (string) @filemtime(__DIR__ . '/module.html') . '-' . (string) @filesize(__DIR__ . '/module.html');
     }
 
     public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
@@ -584,7 +591,8 @@ class SonosRemote extends IPSModuleStrict
             'hasSonos' => count(array_filter($devs, fn ($d) => $d instanceof SonosDevice)) > 0,
             'favs'     => $this->PublicFavorites(),
             'services' => $this->PublicServices(),
-            'groupMaster' => $gm
+            'groupMaster' => $gm,
+            'htmlVersion' => $this->HtmlVersion()
         ];
     }
 

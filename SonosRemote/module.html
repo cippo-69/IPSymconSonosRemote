@@ -509,6 +509,16 @@
     switch (msg.type) {
       case 'full':
         SR.state = msg.state;
+        // Kachel-Code veraltet (Modul wurde aktualisiert, Visualisierung hat noch die alte Kachel): einmal neu laden
+        if (msg.state.htmlVersion && SR.htmlVersion && msg.state.htmlVersion !== SR.htmlVersion) {
+          let done = '';
+          try { done = sessionStorage.getItem('sr-reload') || ''; } catch (e) {}
+          if (done !== msg.state.htmlVersion) {
+            try { sessionStorage.setItem('sr-reload', msg.state.htmlVersion); } catch (e) {}
+            location.reload();
+            return;
+          }
+        }
         schedulePoll();
         { const keep = new Set(SR.state.devices.map((d) => String(d.image || '').slice(6))); Object.keys(SR.covers).forEach((h) => { if (!keep.has(h)) delete SR.covers[h]; }); }
         if (dragging()) { SR.pending = true; return; }   // Regler wird gerade bewegt – danach nachholen
