@@ -506,7 +506,33 @@ class SonosDevice extends SNRBaseDevice
         if ($this->instance <= 0 || $this->Power() === false) {
             return false;
         }
-        return IPS_GetInstance($this->instance)['InstanceStatus'] === IS_ACTIVE;
+        if (IPS_GetInstance($this->instance)['InstanceStatus'] !== IS_ACTIVE) {
+            return false;
+        }
+        // Die Sonos-Instanz bleibt auch beim Hochfahren „aktiv“ – daher prüfen, ob der Player wirklich antwortet
+        return $this->Reachable();
+    }
+
+    /** Ergebnis der Erreichbarkeitsprüfung je Instanz: [Zeitpunkt, erreichbar] – gilt 5 s */
+    private static array $reachable = [];
+
+    public function Reachable(): bool
+    {
+        $c = self::$reachable[$this->instance] ?? null;
+        if ($c === null || microtime(true) - $c[0] > 5) {
+            try {
+                $ok = $this->UPnP()->Reachable();
+            } catch (Throwable $e) {
+                $ok = false;
+            }
+            self::$reachable[$this->instance] = $c = [microtime(true), $ok];
+        }
+        return $c[1];
+    }
+
+    public function Rincon(): string
+    {
+        return $this->instance > 0 ? trim((string) @IPS_GetProperty($this->instance, 'RINCON')) : '';
     }
 
     public function State(): array
@@ -613,7 +639,26 @@ class SonosDevice extends SNRBaseDevice
             // ein Master kann nicht beitreten – erst eigene Gruppe auflösen
             $this->DissolveGroup();
         }
-        SNS_SetGroup($this->instance, $Coordinator);
+        try {
+            SNS_SetGroup($this->instance, $Coordinator);
+        } catch (Throwable $e) {
+            // Sonos-Modul konnte nicht – unten direkt am Player
+        }
+        // zusätzlich direkt am Player: das Sonos-Modul trägt die Gruppe auch ein, wenn der Beitritt nicht wirkt
+        $rincon = $Coordinator > 0 ? trim((string) @IPS_GetProperty($Coordinator, 'RINCON')) : '';
+        if ($rincon !== '') {
+            $this->UPnP()->JoinCoordinator($rincon);
+        }
+    }
+
+    public function LeaveGroup(): void
+    {
+        try {
+            SNS_SetGroup($this->instance, 0);
+        } catch (Throwable $e) {
+            // unten direkt am Player
+        }
+        $this->UPnP()->Standalone();
     }
 
     public function DissolveGroup(): void

@@ -12,6 +12,7 @@ class SonosUPnP
     private const CD = ['/MediaServer/ContentDirectory/Control', 'urn:schemas-upnp-org:service:ContentDirectory:1'];
     private const MS = ['/MusicServices/Control', 'urn:schemas-upnp-org:service:MusicServices:1'];
     private const DP = ['/DeviceProperties/Control', 'urn:schemas-upnp-org:service:DeviceProperties:1'];
+    private const ZGT = ['/ZoneGroupTopology/Control', 'urn:schemas-upnp-org:service:ZoneGroupTopology:1'];
     private const SP = ['/SystemProperties/Control', 'urn:schemas-upnp-org:service:SystemProperties:1'];
 
     private const DIDL_HEAD = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">';
@@ -140,6 +141,54 @@ class SonosUPnP
             ];
         }
         return $out;
+    }
+
+    // ---------- Gruppen ----------
+
+    /**
+     * Tatsächliche Gruppen laut Sonos: RINCON jedes Players => RINCON seines Koordinators
+     */
+    public function ZoneGroups(): array
+    {
+        $r = $this->call(self::ZGT, 'GetZoneGroupState', []);
+        $xml = is_scalar($r) ? (string) $r : (string) (((array) $r)['ZoneGroupState'] ?? '');
+        $doc = new DOMDocument();
+        if ($xml === '' || !@$doc->loadXML($xml)) {
+            return [];
+        }
+        $out = [];
+        foreach ($doc->getElementsByTagName('ZoneGroup') as $g) {
+            /** @var DOMElement $g */
+            $coord = $g->getAttribute('Coordinator');
+            foreach ($g->getElementsByTagName('ZoneGroupMember') as $m) {
+                /** @var DOMElement $m */
+                $out[$m->getAttribute('UUID')] = $coord;
+            }
+        }
+        return $out;
+    }
+
+    /** Diesem Player sagen: spiele mit dem Koordinator $Rincon (Gruppe beitreten) */
+    public function JoinCoordinator(string $Rincon): void
+    {
+        $this->SetAVTransportURI('x-rincon:' . $Rincon);
+    }
+
+    /** Gruppe verlassen (eigenständig werden) */
+    public function Standalone(): void
+    {
+        $this->call(self::AVT, 'BecomeCoordinatorOfStandaloneGroup', [new SoapParam('0', 'InstanceID')]);
+    }
+
+    /** Antwortet der Player im Netz? (nach dem Einschalten erst nach dem Hochfahren) */
+    public function Reachable(float $TimeoutSec = 0.4): bool
+    {
+        $fp = @fsockopen($this->address, 1400, $errno, $errstr, $TimeoutSec);
+        if ($fp === false) {
+            return false;
+        }
+        fclose($fp);
+        return true;
     }
 
     public function HouseholdID(): string

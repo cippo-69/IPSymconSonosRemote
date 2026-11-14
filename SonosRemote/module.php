@@ -520,6 +520,14 @@ class SonosRemote extends IPSModuleStrict
         }
         $coupled = $this->Coupled();
         $mi = $master->InstanceID();
+        // tatsächlicher Gruppenstand vom Player (die Variable „Teil der Gruppe“ kann falsch sein)
+        $topo = [];
+        try {
+            $topo = $master->UPnP()->ZoneGroups();
+        } catch (Throwable $e) {
+            $this->SendDebug('Gruppe', 'Gruppenstand nicht lesbar: ' . $e->getMessage(), 0);
+        }
+        $mr = $master->Rincon();
         foreach ($this->Devices() as $key => $d) {
             if ($key === $master->Key() || $key === $Exclude) {
                 continue;
@@ -527,10 +535,12 @@ class SonosRemote extends IPSModuleStrict
             $want = in_array((string) $key, $sel, true);
             try {
                 if ($d instanceof SonosDevice) {
-                    if ($want && $master->Available() && $d->Available() && $d->MemberOf() !== $mi) {
+                    $dr = $d->Rincon();
+                    $isMember = ($topo && $dr !== '' && $mr !== '') ? (($topo[$dr] ?? '') === $mr) : $d->MemberOf() === $mi;
+                    if ($want && $master->Available() && $d->Available() && !$isMember) {
                         $d->JoinGroup($mi);
-                    } elseif (!$want && $d->MemberOf() === $mi) {
-                        SNS_SetGroup($d->InstanceID(), 0);
+                    } elseif (!$want && $isMember && $d->Available()) {
+                        $d->LeaveGroup();
                     }
                 } elseif ($want && !in_array((string) $key, $coupled, true)) {
                     $d->PrepareForGroup();
@@ -634,7 +644,32 @@ class SonosRemote extends IPSModuleStrict
         // eingeschaltet, aber noch nicht erreichbar: alle 10 s neu prüfen
         $starting = count(array_filter($list, fn ($s) => ($s['kind'] ?? '') === 'sonos' && ($s['power'] ?? null) === true && empty($s['available'])));
         $this->SetTimerInterval('Startup', $starting > 0 ? 10000 : 0);
-        // Gruppen aus MemberOfGroup der Sonos-Instanzen ableiten
+        // Gruppen: tatsächlicher Stand vom Player, ersatzweise aus der Variable „Teil der Gruppe“
+        $topo = [];
+        foreach ($devs as $d) {
+            if ($d instanceof SonosDevice && $d->Available()) {
+                try {
+                    $topo = $d->UPnP()->ZoneGroups();
+                } catch (Throwable $e) {
+                    $topo = [];
+                }
+                break;
+            }
+        }
+        if ($topo) {
+            $byRincon = [];
+            foreach ($devs as $key => $d) {
+                if ($d instanceof SonosDevice && $d->Rincon() !== '') {
+                    $byRincon[$d->Rincon()] = $d->InstanceID();
+                }
+            }
+            foreach ($devs as $key => $d) {
+                if ($d instanceof SonosDevice && isset($list[$key])) {
+                    $c = $topo[$d->Rincon()] ?? '';
+                    $list[$key]['memberOf'] = ($c !== '' && $c !== $d->Rincon()) ? (int) ($byRincon[$c] ?? 0) : 0;
+                }
+            }
+        }
         foreach ($list as $key => $s) {
             $m = (int) ($s['memberOf'] ?? 0);
             if ($m > 0 && isset($byInstance[$m])) {
