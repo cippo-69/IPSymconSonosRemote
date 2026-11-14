@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../libs/DeviceDrivers.php';
 require_once __DIR__ . '/../libs/SonosSMAPI.php';
+require_once __DIR__ . '/../libs/Podcasts.php';
 
 /**
  * Sonos-Kachel (HTML-SDK)
@@ -14,7 +15,7 @@ require_once __DIR__ . '/../libs/SonosSMAPI.php';
  */
 class SonosRemote extends IPSModuleStrict
 {
-    private const FAV_TYPES = ['playlist', 'radio', 'track', 'artist', 'album'];
+    private const FAV_TYPES = ['playlist', 'radio', 'track', 'artist', 'album', 'podcast'];
     private const FAV_SLOTS = 20;
 
     /** Quellen der Bibliothek: Schlüssel => [ObjectID, Suche auf dem Player, Favoritenart (leer = aus UPnP-Klasse)] */
@@ -192,7 +193,7 @@ class SonosRemote extends IPSModuleStrict
                     break;
                 case 'browse':
                     $src = (string) ($v['source'] ?? 'fv');
-                    if ($src === 'tunein' || str_starts_with($src, 'svc:')) {
+                    if ($src === 'tunein' || $src === 'podcast' || str_starts_with($src, 'svc:')) {
                         $this->BrowseService($src, (string) ($v['query'] ?? ''), (string) ($v['cat'] ?? ''), (int) ($v['open'] ?? -1), !empty($v['back']));
                     } else {
                         $this->Browse($src, (string) ($v['query'] ?? ''));
@@ -683,6 +684,19 @@ class SonosRemote extends IPSModuleStrict
         if (!$dev->Capabilities()['media']) {
             throw new Exception(sprintf($this->Translate('%s cannot play favorites'), $dev instanceof SNRBaseDevice ? $dev->Name() : $Device));
         }
+        // Podcast: die neuesten Folgen (bis 20, neueste zuerst) in die Warteschlange
+        if (str_starts_with((string) ($Item['uri'] ?? ''), 'podcast:')) {
+            if (!$dev instanceof SonosDevice) {
+                throw new Exception(sprintf($this->Translate('%s cannot play favorites'), $dev instanceof SNRBaseDevice ? $dev->Name() : $Device));
+            }
+            $eps = Podcasts::Episodes(substr((string) $Item['uri'], 8), 20)['items'];
+            if (!$eps) {
+                throw new Exception($this->Translate('The podcast has no audio episodes'));
+            }
+            $dev->PlayTracks(array_map(fn ($e) => array_combine(['uri', 'meta'], Podcasts::EpisodeMedia($e)), $eps));
+            $this->Toast(sprintf($this->Translate('Playing %s'), (string) ($Item['name'] ?? '')));
+            return true;
+        }
         try {
             $dev->PlayItem($Item);
         } catch (Throwable $e) {
@@ -820,6 +834,23 @@ class SonosRemote extends IPSModuleStrict
                     [$e['uri'], $e['meta']] = SonosMedia::TuneIn($r['id'], $r['title'], $sid);
                 }
                 $items[] = $e;
+            }
+        } elseif ($Source === 'podcast') {
+            // ohne Suchbegriff: Top-Podcasts; geöffneter Podcast: seine Folgen (neueste zuerst)
+            if ($top) {
+                $res = Podcasts::Episodes((string) $top['ref'], $limit);
+            } elseif ($nav['query'] !== '') {
+                $res = Podcasts::Search($nav['query'], $limit);
+            } else {
+                $res = Podcasts::Top($limit);
+            }
+            foreach ($res['items'] as $r) {
+                if ($r['kind'] === 'show') {
+                    $items[] = ['name' => $r['title'], 'sub' => $r['sub'], 'image' => $r['image'], 'type' => 'podcast', 'uri' => 'podcast:' . $r['ref'], 'meta' => '', 'ref' => $r['ref'], 'open' => true];
+                } else {
+                    [$u, $m] = Podcasts::EpisodeMedia($r);
+                    $items[] = ['name' => $r['title'], 'sub' => $r['sub'], 'image' => $r['image'], 'type' => 'track', 'uri' => $u, 'meta' => $m, 'ref' => '', 'open' => false, 'queue' => true];
+                }
             }
         } else {
             $sid = (int) substr($Source, 4);
@@ -1088,7 +1119,7 @@ class SonosRemote extends IPSModuleStrict
     /** Quellen für die Kachel: TuneIn und die verknüpften Dienste mit ihren Suchkategorien */
     private function PublicServices(): array
     {
-        $out = [['key' => 'tunein', 'name' => 'TuneIn', 'cats' => []]];
+        $out = [['key' => 'tunein', 'name' => 'TuneIn', 'cats' => []], ['key' => 'podcast', 'name' => 'Podcasts', 'cats' => []]];
         foreach ($this->LinkedServices() as $sid => $s) {
             $out[] = ['key' => 'svc:' . $sid, 'name' => $s['name'], 'cats' => array_map(fn ($c) => ['id' => $c['id'], 'type' => $c['type'], 'label' => $c['label']], (array) ($s['cats'] ?? []))];
         }
@@ -1168,6 +1199,9 @@ class SonosRemote extends IPSModuleStrict
         ];
         if (is_array($Item['smapi'] ?? null)) {
             $favs[$Type][$slot]['smapi'] = $Item['smapi'];
+        }
+        if (!empty($Item['queue'])) {
+            $favs[$Type][$slot]['queue'] = true;   // z. B. Podcast-Folge: über die Warteschlange abspielen
         }
         $this->SaveFavorites($favs);
         $this->Toast(sprintf($this->Translate('Saved to slot %d'), $slot + 1));

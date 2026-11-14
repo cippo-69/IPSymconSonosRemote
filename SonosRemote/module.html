@@ -170,7 +170,7 @@
   const SR = { state: { devices: [], favs: {}, hasSonos: false }, current: null, favType: 'playlist', favEdit: false, source: 'fv', cat: {}, saveAs: '', drag: {}, browse: null, covers: {}, openTone: new Set() };
   // Cover: https-Adresse oder eingebettetes Bild ('cover:<hash>', kommt als eigene Nachricht)
   function coverSrc(u) { u = String(u || ''); return u.startsWith('cover:') ? (SR.covers[u.slice(6)] || '') : u; }
-  const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums' };
+  const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums', podcast: 'Podcasts' };
   const SOURCES = { fv: 'Sonos favorites', sq: 'Sonos playlists', radio: 'Radio', artist: 'Artists', album: 'Albums', track: 'Tracks' };
   const P = {
     play: 'M8 5v14l11-7z',
@@ -193,10 +193,11 @@
     list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
     open: 'M8.6 16.6 13.2 12 8.6 7.4 10 6l6 6-6 6z',
     back: 'M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2z',
+    mic: 'M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5.3-3a5.3 5.3 0 0 1-10.6 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9h-1.7z',
     tone: 'M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z',
     folder: 'M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z'
   };
-  const ICON = { playlist: 'list', radio: 'radio', track: 'note', artist: 'person', album: 'album' };
+  const ICON = { playlist: 'list', radio: 'radio', track: 'note', artist: 'person', album: 'album', podcast: 'mic' };
   const svg = (k) => `<svg viewBox="0 0 24 24"><path d="${P[k]}"/></svg>`;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

@@ -51,6 +51,8 @@
             "Open the login page and sign in to %s. The link is completed automatically.": "Anmeldeseite öffnen und bei %s anmelden. Die Verknüpfung wird danach automatisch abgeschlossen.",
             "Code: %s": "Code: %s",
             "Podcasts": "Podcasts",
+            "The podcast has no audio episodes": "Der Podcast hat keine Audio-Folgen",
+            "Top podcasts": "Top-Podcasts",
             "Sound": "Klang",
             "Bass": "Bässe",
             "Treble": "Höhen",

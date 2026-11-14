@@ -19,7 +19,7 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
   können einer Sonos-Gruppe beitreten. Andere Geräte werden stattdessen gekoppelt: Sie werden eingeschaltet, auf den
   konfigurierten Eingang gestellt (z. B. AV-Receiver auf den Eingang mit Sonos Port) und folgen Play/Pause/Stopp des Masters –
   auch wenn der Master über die Sonos-App bedient wird. Eigene Musik bekommen sie nur über diesen Eingang.
-- **Favoriten:** Playlists, Radio, Titel, Interpreten, Alben – je 20 Plätze, umbenennen, verschieben, löschen.
+- **Favoriten:** Playlists, Radio, Titel, Interpreten, Alben, Podcasts – je 20 Plätze, umbenennen, verschieben, löschen.
   Speichern per Stern in der Bibliothek oder bei „Jetzt läuft“ (aktueller Sender bzw. Titel).
 - **Bibliothek:** Sonos-Favoriten, Sonos-Playlists, Radio (Meine Sender), lokale Musikbibliothek (Interpreten, Alben,
   Titel mit Suche). „Speichern als“ legt die Favoritenart fest (Automatisch = aus der Sonos-Klasse).
@@ -27,6 +27,9 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
   über dieselbe Schnittstelle wie die Sonos-App (Sonos Music API). Kategorien (Titel, Alben, Interpreten, Playlists) kommen
   vom Dienst; ohne Suchbegriff zeigt die Kachel die Startebene des Dienstes (z. B. „Meine Musik“). Interpreten und
   Ordner lassen sich öffnen, Alben/Playlists/Titel abspielen und als Favorit speichern.
+- **Podcasts:** Suche im Podcast-Verzeichnis von Apple (ohne Konto), ohne Suchbegriff die Top-Podcasts. Podcast öffnen
+  zeigt die Folgen (neueste zuerst); eine Folge spielt direkt auf dem gewählten Sonos-Gerät bzw. der Gruppe. Podcasts lassen
+  sich als Favorit (Art „Podcasts“) speichern – abgespielt werden dann die neuesten Folgen, die neueste zuerst.
 - **Internetradio (TuneIn):** Sendersuche und Rubriken (Lokale Sender, Musik, …) ohne Konto.
 - **Klang je Sonos-Gerät:** Bässe und Höhen als Schieberegler, Loudness als Schalter im Klang-Untermenü der Gerätekarte – sofern in der Sonos-Instanz
   „Tiefen-“, „Höhen-“ bzw. „Loudness-Steuerung“ eingeschaltet ist.
@@ -94,6 +97,8 @@ welche Bedienelemente die Kachel zeigt; mit `media = true` erscheint das Gerät 
   (bis 100). Klappt das Abspielen eines Dienstes gar nicht, fehlt meist ein Sonos-Favorit dieses Dienstes als Vorlage
   (siehe „Musikdienste verknüpfen“, Schritt 1) – danach „Dienste von Sonos laden“ erneut klicken.
 - Amazon Music ist ungewöhnlich streng; ob Suche und Wiedergabe mit dem eigenen Konto gehen, muss vor Ort getestet werden.
+- Podcasts: Hörfortschritt und Abos der Podcasts-App auf dem iPhone kennt die Kachel nicht. Bezahlte Podcasts (Apple-Abos)
+  und reine Video-Podcasts lassen sich nicht abspielen.
 - Cover-Bilder lokaler Musik kommen direkt vom Sonos-Gerät (`http://<ip>:1400/…`) und sind nur im lokalen Netz sichtbar.
 
 ## Lizenz

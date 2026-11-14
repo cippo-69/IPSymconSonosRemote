@@ -85,7 +85,8 @@ class SonosUPnP
         if ($uri === '') {
             throw new Exception('Keine URI');
         }
-        if (($Item['type'] ?? '') === 'radio' || self::IsStream($uri)) {
+        // Streams/Radio direkt; Dateien mit http-Adresse (z. B. Podcast-Folgen, 'queue') über die Warteschlange
+        if (($Item['type'] ?? '') === 'radio' || (self::IsStream($uri) && empty($Item['queue']))) {
             if ($meta === '') {
                 $meta = self::RadioMeta((string) ($Item['name'] ?? 'Radio'));
             }
