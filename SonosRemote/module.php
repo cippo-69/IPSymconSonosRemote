@@ -52,6 +52,8 @@ class SonosRemote extends IPSModuleStrict
         $this->RegisterTimer('LinkPoll', 0, 'SNR_LinkPoll($_IPS[\'TARGET\']);');
         // solange ein Sonos-Gerät hochfährt, regelmäßig nachsehen (bis es erreichbar ist)
         $this->RegisterTimer('Startup', 0, 'SNR_Flush($_IPS[\'TARGET\']);');
+        // Cover kurz nach einem Titelwechsel ein zweites Mal holen (eigener Timer, bremst die Aktualisierung nicht)
+        $this->RegisterTimer('CoverCheck', 0, 'SNR_Flush($_IPS[\'TARGET\']);');
         $this->RegisterAttributeString('WatchedInst', '[]');
         $this->RegisterAttributeString('PreferredMaster', '');  // soll Master werden, sobald erreichbar (AirPlay-Empfänger)
 
@@ -123,10 +125,11 @@ class SonosRemote extends IPSModuleStrict
     public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
     {
         if ($Message === IM_CHANGESTATUS) {
-            $this->SetTimerInterval('Flush', 300);
+            $this->ScheduleFlush();
             return;
         }
-        if ($Message !== VM_UPDATE) {
+        // nur echte Wertänderungen – das Sonos-Modul aktualisiert seine Variablen laufend auch ohne Änderung
+        if ($Message !== VM_UPDATE || empty($Data[1])) {
             return;
         }
         // Wiedergabe des Masters an gekoppelte Nicht-Sonos-Geräte weitergeben (auch bei Bedienung über die Sonos-App)
@@ -136,13 +139,24 @@ class SonosRemote extends IPSModuleStrict
                 $this->MirrorToCoupled($cmd);
             }
         }
-        // Änderungen kurz sammeln (Sonos aktualisiert mehrere Variablen nacheinander)
-        $this->SetTimerInterval('Flush', 300);
+        $this->ScheduleFlush();
+    }
+
+    /**
+     * Änderungen kurz sammeln (Sonos ändert mehrere Variablen nacheinander). Ein laufender Timer wird nicht
+     * verschoben – sonst käme die Kachel bei vielen Geräten mit dauernden Meldungen nie zum Zug.
+     */
+    private function ScheduleFlush(): void
+    {
+        if ($this->GetTimerInterval('Flush') === 0) {
+            $this->SetTimerInterval('Flush', 300);
+        }
     }
 
     public function Flush(): void
     {
         $this->SetTimerInterval('Flush', 0);
+        $this->SetTimerInterval('CoverCheck', 0);
         if (count($this->Selection()) > 0) {
             // ausgewählte Geräte, die gerade hochgefahren sind, nachträglich in die Gruppe holen (bzw. Master werden)
             try {
@@ -816,8 +830,8 @@ class SonosRemote extends IPSModuleStrict
         }
         unset($s);
         $this->SetBuffer('Covers', json_encode(array_intersect_key($cache, $used)));
-        if (!empty($recheck) && $this->GetTimerInterval('Flush') === 0) {
-            $this->SetTimerInterval('Flush', 3500);
+        if (!empty($recheck) && $this->GetTimerInterval('CoverCheck') === 0) {
+            $this->SetTimerInterval('CoverCheck', 3500);
         }
     }
 
