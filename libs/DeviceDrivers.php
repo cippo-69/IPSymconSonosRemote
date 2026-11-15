@@ -516,6 +516,17 @@ class SonosDevice extends SNRBaseDevice
     /** Ergebnis der Erreichbarkeitsprüfung je Instanz: [Zeitpunkt, erreichbar] – gilt 5 s */
     private static array $reachable = [];
 
+    /** Zwischenspeicher laden/holen (das Modul hält ihn zwischen den Aufrufen in einem Puffer) */
+    public static function SetReachCache(array $Cache): void
+    {
+        self::$reachable = $Cache + self::$reachable;
+    }
+
+    public static function ReachCache(): array
+    {
+        return array_filter(self::$reachable, fn ($c) => is_array($c) && microtime(true) - (float) $c[0] <= 5);
+    }
+
     public function Reachable(): bool
     {
         $c = self::$reachable[$this->instance] ?? null;
@@ -721,7 +732,25 @@ class SonosDevice extends SNRBaseDevice
         $t = $u->GetTransportInfo();
         $dur = SonosUPnP::Seconds((string) ($p['TrackDuration'] ?? ''));
         $pos = SonosUPnP::Seconds((string) ($p['RelTime'] ?? ''));
-        return ['pos' => max(0, $pos), 'dur' => max(0, $dur), 'state' => (string) ($t['CurrentTransportState'] ?? '')];
+        try {
+            $mode = $u->GetPlayMode();
+        } catch (Throwable $e) {
+            $mode = '';
+        }
+        return ['pos' => max(0, $pos), 'dur' => max(0, $dur), 'state' => (string) ($t['CurrentTransportState'] ?? ''), 'mode' => $mode];
+    }
+
+    /** Zufallswiedergabe ein/aus; die Wiederholung bleibt erhalten */
+    public function SetShuffle(bool $On): void
+    {
+        $u = $this->UPnP($this->PlayingCoordinator());
+        $cur = $u->GetPlayMode();
+        $on = ['NORMAL' => 'SHUFFLE_NOREPEAT', 'REPEAT_ALL' => 'SHUFFLE', 'REPEAT_ONE' => 'SHUFFLE_REPEAT_ONE'];
+        $off = array_flip($on);
+        $new = $On ? ($on[$cur] ?? $cur) : ($off[$cur] ?? $cur);
+        if ($new !== $cur) {
+            $u->SetPlayMode($new);
+        }
     }
 
     /**

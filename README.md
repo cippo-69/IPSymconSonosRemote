@@ -19,6 +19,9 @@ Bedienoberfläche für die Kachel-Visualisierung (HTML-SDK) auf Basis des Sonos-
   können einer Sonos-Gruppe beitreten. Andere Geräte werden stattdessen gekoppelt: Sie werden eingeschaltet, auf den
   konfigurierten Eingang gestellt (z. B. AV-Receiver auf den Eingang mit Sonos Port) und folgen Play/Pause/Stopp des Masters –
   auch wenn der Master über die Sonos-App bedient wird. Eigene Musik bekommen sie nur über diesen Eingang.
+- **Zufallswiedergabe:** Schalter unter „Jetzt läuft“; Alben und Playlists (Bibliothek, Favoriten) lassen sich direkt zufällig abspielen.
+- **Bedienung:** Querformat mit Navigation links und zweispaltigem „Jetzt läuft“; die Kachel merkt sich je Bediengerät die zuletzt
+  genutzte Ansicht und die letzten 5 Suchanfragen.
 - **Favoriten:** Playlists, Radio, Titel, Interpreten, Alben, Podcasts – je 20 Plätze, umbenennen, verschieben, löschen.
   Speichern per Stern in der Bibliothek oder bei „Jetzt läuft“ (aktueller Sender bzw. Titel).
 - **Bibliothek:** Sonos-Favoriten, Sonos-Playlists, Radio (Meine Sender), lokale Musikbibliothek (Interpreten, Alben,

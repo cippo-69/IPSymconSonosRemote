@@ -61,6 +61,8 @@ class SonosRemote extends IPSModuleStrict
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+        $this->devCache = null;
+        $this->SetBuffer('LastPush', '');
 
         foreach ((array) json_decode($this->ReadAttributeString('Watched'), true) as $vid) {
             $this->UnregisterMessage((int) $vid, VM_UPDATE);
@@ -191,6 +193,7 @@ class SonosRemote extends IPSModuleStrict
         try {
             switch ($Ident) {
                 case 'refresh':
+                    $this->SetBuffer('LastPush', '');
                     $this->Flush();
                     break;
                 case 'importSonos':
@@ -207,6 +210,13 @@ class SonosRemote extends IPSModuleStrict
                     break;
                 case 'mute':
                     $this->Device($id)->SetMute((bool) ($v['value'] ?? false));
+                    break;
+                case 'shuffle':
+                    $dev = $this->Device($id);
+                    if ($dev instanceof SonosDevice) {
+                        $dev->SetShuffle(!empty($v['value']));
+                        $this->SendPosition($id);
+                    }
                     break;
                 case 'position':
                     $this->SendPosition($id);
@@ -231,13 +241,13 @@ class SonosRemote extends IPSModuleStrict
                     $this->SelectForGroup($id, (bool) ($v['value'] ?? false));
                     break;
                 case 'playFav':
-                    $this->PlayFavoriteOn((string) ($v['type'] ?? ''), (int) ($v['slot'] ?? -1) + 1, $id);
+                    $this->PlayFavoriteOn((string) ($v['type'] ?? ''), (int) ($v['slot'] ?? -1) + 1, $id, !empty($v['shuffle']));
                     break;
                 case 'playBrowse':
                     $idx = (int) ($v['idx'] ?? -1);
                     $item = $this->BrowseItem($idx);
                     if ($item) {
-                        $this->PlayOn($this->WithAlbumContext($item, $idx), $id);
+                        $this->PlayOn($this->WithAlbumContext($item, $idx) + (!empty($v['shuffle']) ? ['shuffle' => true] : []), $id);
                     }
                     break;
                 case 'browse':
@@ -422,7 +432,7 @@ class SonosRemote extends IPSModuleStrict
             return;
         }
         $p = $dev->Position();
-        $this->UpdateVisualizationValue(json_encode(['type' => 'pos', 'id' => $Device, 'pos' => $p['pos'], 'dur' => $p['dur'], 'state' => $p['state']]));
+        $this->UpdateVisualizationValue(json_encode(['type' => 'pos', 'id' => $Device, 'pos' => $p['pos'], 'dur' => $p['dur'], 'state' => $p['state'], 'mode' => $p['mode']]));
     }
 
     /** Kompatibilität: Gerät der Gruppe hinzufügen bzw. herausnehmen */
@@ -485,9 +495,19 @@ class SonosRemote extends IPSModuleStrict
     // ---------- Geräte ----------
 
     /** @return SNRDevice[] */
+    /** Treiber je Aufruf nur einmal aufbauen (werden in einem Durchlauf vielfach gebraucht) */
+    private ?array $devCache = null;
+
     private function Devices(): array
     {
-        return SNRDeviceFactory::FromList((array) json_decode($this->ReadPropertyString('Devices'), true));
+        if ($this->devCache === null) {
+            $this->devCache = SNRDeviceFactory::FromList((array) json_decode($this->ReadPropertyString('Devices'), true));
+            $rc = json_decode($this->GetBuffer('Reach'), true);
+            if (is_array($rc)) {
+                SonosDevice::SetReachCache($rc);
+            }
+        }
+        return $this->devCache;
     }
 
     private function Device(string $Key): SNRDevice
@@ -694,17 +714,23 @@ class SonosRemote extends IPSModuleStrict
         $starting = count(array_filter($list, fn ($s) => ($s['kind'] ?? '') === 'sonos' && ($s['power'] ?? null) === true && empty($s['available'])));
         $this->SetTimerInterval('Startup', ($starting > 0 || $this->GetBuffer('PendingPlay') !== '') ? 10000 : 0);
         // Gruppen: tatsächlicher Stand vom Player, ersatzweise aus der Variable „Teil der Gruppe“
-        $topo = [];
-        foreach ($devs as $d) {
-            if ($d instanceof SonosDevice && $d->Available()) {
-                try {
-                    $topo = $d->UPnP()->ZoneGroups();
-                } catch (Throwable $e) {
-                    $topo = [];
+        $tc = json_decode($this->GetBuffer('Topo'), true);
+        $topo = (is_array($tc) && microtime(true) - (float) ($tc['t'] ?? 0) < 3) ? (array) $tc['g'] : null;
+        if ($topo === null) {
+            $topo = [];
+            foreach ($devs as $d) {
+                if ($d instanceof SonosDevice && $d->Available()) {
+                    try {
+                        $topo = $d->UPnP()->ZoneGroups();
+                    } catch (Throwable $e) {
+                        $topo = [];
+                    }
+                    break;
                 }
-                break;
             }
+            $this->SetBuffer('Topo', json_encode(['t' => microtime(true), 'g' => $topo]));
         }
+        $this->SetBuffer('Reach', json_encode(SonosDevice::ReachCache()));
         if ($topo) {
             $byRincon = [];
             foreach ($devs as $key => $d) {
@@ -774,14 +800,25 @@ class SonosRemote extends IPSModuleStrict
             if (!$d instanceof SonosDevice || empty($s['available']) || $ck === '') {
                 continue;
             }
-            if (!array_key_exists($ck, $cache)) {
-                $cache[$ck] = $this->LoadCover($d);
+            // neu laden: bei neuem Titel und einmal ca. 3 s später – das Bild kommt oft erst nach dem Titel
+            $e = $cache[$ck] ?? null;
+            if (!is_array($e)) {
+                $e = ['img' => $this->LoadCover($d), 't' => time(), 'n' => 1];
+            } elseif ($e['n'] < 2 && time() - $e['t'] >= 3) {
+                $e = ['img' => $this->LoadCover($d), 't' => $e['t'], 'n' => 2];
             }
-            $s['image'] = $cache[$ck];
+            if ($e['n'] < 2) {
+                $recheck = true;
+            }
+            $cache[$ck] = $e;
+            $s['image'] = $e['img'];
             $used[$ck] = true;
         }
         unset($s);
         $this->SetBuffer('Covers', json_encode(array_intersect_key($cache, $used)));
+        if (!empty($recheck) && $this->GetTimerInterval('Flush') === 0) {
+            $this->SetTimerInterval('Flush', 3500);
+        }
     }
 
     private function LoadCover(SonosDevice $Device): string
@@ -822,9 +859,17 @@ class SonosRemote extends IPSModuleStrict
         return 'cover:' . $hash;
     }
 
-    private function PushFull(): void
+    private function PushFull(bool $Force = false): void
     {
-        $this->UpdateVisualizationValue(json_encode(['type' => 'full', 'state' => $this->BuildState()]));
+        $json = json_encode(['type' => 'full', 'state' => $this->BuildState()]);
+        // unveränderten Zustand nicht erneut schicken (spart Neuaufbau in der Kachel); spätestens alle 60 s doch
+        $sig = md5($json);
+        $last = explode('|', $this->GetBuffer('LastPush'));
+        if (!$Force && ($last[0] ?? '') === $sig && time() - (int) ($last[1] ?? 0) < 60) {
+            return;
+        }
+        $this->SetBuffer('LastPush', $sig . '|' . time());
+        $this->UpdateVisualizationValue($json);
     }
 
     private function Toast(string $Text): void
@@ -834,7 +879,24 @@ class SonosRemote extends IPSModuleStrict
 
     // ---------- Abspielen ----------
 
+    /** Abspielen; mit 'shuffle' danach Zufallswiedergabe einschalten (nicht, wenn nur vorgemerkt) */
     private function PlayOn(array $Item, string $Device): bool
+    {
+        $r = $this->PlayOnInner($Item, $Device);
+        if ($r === 'played' && !empty($Item['shuffle'])) {
+            try {
+                $dev = $this->Device($Device !== '' ? $Device : (string) ($this->GetBuffer('LastPlayDevice')));
+                if ($dev instanceof SonosDevice) {
+                    $dev->SetShuffle(true);
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('Shuffle', $e->getMessage(), 0);
+            }
+        }
+        return true;
+    }
+
+    private function PlayOnInner(array $Item, string $Device): string
     {
         $dev = null;
         if ($Device !== '') {
@@ -850,6 +912,7 @@ class SonosRemote extends IPSModuleStrict
         if ($dev === null) {
             throw new Exception($this->Translate('No Sonos device is switched on'));
         }
+        $this->SetBuffer('LastPlayDevice', $dev->Key());
         if (!$dev->Capabilities()['media']) {
             throw new Exception(sprintf($this->Translate('%s cannot play favorites'), $dev instanceof SNRBaseDevice ? $dev->Name() : $Device));
         }
@@ -861,13 +924,13 @@ class SonosRemote extends IPSModuleStrict
             $this->SetBuffer('PendingPlay', json_encode(['item' => $Item, 'device' => $dev->Key(), 'until' => time() + 240]));
             $this->Toast(sprintf($this->Translate('%s is switching on – playback starts automatically'), $dev->Name()));
             $this->PushFull();
-            return true;
+            return 'queued';
         }
         // Titel aus einem Album/einer Playlist: ganze Liste, beginnend beim angetippten Titel
         if (!empty($Item['tracks']) && $dev instanceof SonosDevice) {
             $dev->PlayTracks((array) $Item['tracks'], (int) ($Item['start'] ?? 0));
             $this->Toast(sprintf($this->Translate('Playing %s'), (string) ($Item['name'] ?? '')));
-            return true;
+            return 'played';
         }
         // Podcast: die neuesten Folgen (bis 20, neueste zuerst) in die Warteschlange
         if (str_starts_with((string) ($Item['uri'] ?? ''), 'podcast:')) {
@@ -880,7 +943,7 @@ class SonosRemote extends IPSModuleStrict
             }
             $dev->PlayTracks(array_map(fn ($e) => array_combine(['uri', 'meta'], Podcasts::EpisodeMedia($e)), $eps));
             $this->Toast(sprintf($this->Translate('Playing %s'), (string) ($Item['name'] ?? '')));
-            return true;
+            return 'played';
         }
         try {
             $dev->PlayItem($Item);
@@ -898,16 +961,16 @@ class SonosRemote extends IPSModuleStrict
             $dev->PlayTracks($tracks);
         }
         $this->Toast(sprintf($this->Translate('Playing %s'), (string) ($Item['name'] ?? '')));
-        return true;
+        return 'played';
     }
 
-    private function PlayFavoriteOn(string $Type, int $Slot, string $Device): bool
+    private function PlayFavoriteOn(string $Type, int $Slot, string $Device, bool $Shuffle = false): bool
     {
         $fav = $this->Favorites()[$Type][$Slot - 1] ?? null;
         if (!is_array($fav)) {
             throw new Exception($this->Translate('Favorite slot is empty'));
         }
-        return $this->PlayOn($fav + ['type' => $Type], $Device);
+        return $this->PlayOn($fav + ['type' => $Type] + ($Shuffle ? ['shuffle' => true] : []), $Device);
     }
 
     // ---------- Bibliothek ----------

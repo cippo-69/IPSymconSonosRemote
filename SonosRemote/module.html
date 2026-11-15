@@ -119,15 +119,27 @@
   .crumb svg { font-size: 18px; flex: none; }
   .crumb span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chips.sub .chip { padding: 4px 10px; font-size: 12px; }
+  .hist { align-items: center; margin-top: -2px; }
+  .hist .label { margin: 0 2px 0 0; }
+  .hist .chip { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
   .empty { color: var(--sr-muted); padding: 24px 8px; text-align: center; }
   #toast { position: absolute; left: 50%; bottom: calc(var(--sr-nav) + 10px); transform: translateX(-50%); background: rgba(30,30,30,.92); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px; display: none; z-index: 9; max-width: 92%; text-align: center; }
 
-  @media (max-height: 330px) {
-    .nav { display: none; }
-    .view { display: none !important; }
-    #v-now { display: block !important; }
-    .cover { display: none; }
-    .np { gap: 6px; }
+  /* Querformat (z. B. Handy quer, breite Kachel): Navigation links, „Jetzt läuft“ zweispaltig */
+  @media (orientation: landscape) and (max-height: 600px) {
+    #sr { flex-direction: row; }
+    .nav { order: -1; flex-direction: column; height: auto; width: 76px; border-top: 0; border-right: 1px solid var(--sr-line); }
+    .nav button { flex: 1; font-size: 10px; }
+    .view { padding-top: 2px; }
+    .np { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 18px; row-gap: 8px; align-items: center; justify-items: center; padding-top: 0; }
+    .np > * { grid-column: 2; }
+    .np > .cover { grid-column: 1; grid-row: 1 / span 9; width: min(calc(100vh - var(--sr-top) - 96px), 38vw, 260px); align-self: start; }
+    #toast { bottom: 10px; left: calc(50% + 38px); }
+  }
+  @media (orientation: landscape) and (max-height: 330px) {
+    .np > .cover { display: none; }
+    .np > * { grid-column: 1 / -1; }
+    .nav button span { display: none; }
   }
 </style>
 
@@ -151,6 +163,7 @@
       <input id="q" type="search" placeholder="Filter or search …" autocomplete="off" enterkeyhint="search">
       <button class="ib sm fill" id="qbtn" title="Search"><svg viewBox="0 0 24 24"><path d="M5 11h11.2l-4.6-4.6L13 5l7 7-7 7-1.4-1.4 4.6-4.6H5z"/></svg></button>
     </div>
+    <div class="chips sub hist" id="histChips"></div>
     <div class="pick"><span class="label">Play on</span><select class="sel" data-target="1"></select></div>
     <div class="pick"><span class="label">Save as</span><select class="sel" id="saveAs"></select></div>
     <div id="results"></div>
@@ -174,7 +187,7 @@
   // Cover: https-Adresse oder eingebettetes Bild ('cover:<hash>', kommt als eigene Nachricht)
   function coverSrc(u) { u = String(u || ''); return u.startsWith('cover:') ? (SR.covers[u.slice(6)] || '') : u; }
   const TYPES = { playlist: 'Playlists', radio: 'Radio', track: 'Tracks', artist: 'Artists', album: 'Albums', podcast: 'Podcasts' };
-  const SOURCES = { fv: 'Sonos favorites', sq: 'Sonos playlists', radio: 'Radio', artist: 'Artists', album: 'Albums', track: 'Tracks' };
+  const SOURCES = { fv: 'Sonos favorites', sq: 'Sonos playlists', radio: 'Radio' };
   const P = {
     play: 'M8 5v14l11-7z',
     pause: 'M6 5h4v14H6zm8 0h4v14h-4z',
@@ -199,6 +212,7 @@
     mic: 'M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5.3-3a5.3 5.3 0 0 1-10.6 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9h-1.7z',
     airplay: 'M6 22h12l-6-6-6 6zM21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4v-2H3V5h18v12h-4v2h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z',
     tone: 'M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z',
+    shuffle: 'M10.6 9.2 5.4 4 4 5.4l5.2 5.2 1.4-1.4zM14.5 4l2 2L4 18.6 5.4 20 18 7.5l2 2V4h-5.5zm.3 9.4-1.4 1.4 3.1 3.1-2 2.1H20v-5.5l-2 2-3.2-3.1z',
     folder: 'M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z'
   };
   const ICON = { playlist: 'list', radio: 'radio', track: 'note', artist: 'person', album: 'album', podcast: 'mic' };
@@ -220,7 +234,7 @@
   }
   // Aktualisierungen während des Ziehens am Regler zurückhalten (höchstens 4 s, falls das Loslassen nicht ankommt)
   function dragging() { return Object.values(SR.drag).some((t) => t && Date.now() - t < 4000); }
-  function flushPending() { if (SR.pending && !dragging()) { SR.pending = false; renderPickers(); renderNow(); renderDevices(); renderFavs(); } }
+  function flushPending() { if (SR.pending && !dragging()) { SR.pending = false; renderVisible(); } }
   // Zustand selbst abfragen: nach dem Ein-/Ausschalten (2 min) und solange ein Gerät hochfährt
   function schedulePoll() {
     const starting = SR.state.devices.some((d) => d.power === true && !d.available && d.kind === 'sonos');
@@ -239,9 +253,28 @@
   }
 
   // ---------- Navigation ----------
+  // Ansicht je Bediengerät merken; nur die sichtbare Ansicht wird bei Aktualisierungen neu aufgebaut
+  SR.view = 'now';
+  SR.dirty = {};
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function renderView(v) {
+    if (v === 'now') renderNow();
+    else if (v === 'devices') renderDevices();
+    else if (v === 'favs') renderFavs();
+    SR.dirty[v] = false;
+  }
+  function renderVisible() {
+    renderPickers();
+    ['now', 'devices', 'favs'].forEach((v) => { if (v === SR.view) renderView(v); else SR.dirty[v] = true; });
+  }
   function show(v) {
+    if (!['now', 'favs', 'lib', 'devices'].includes(v)) v = 'now';
+    SR.view = v;
+    store('sr-view', v);
     document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
     document.querySelectorAll('.view').forEach((x) => x.classList.toggle('active', x.id === 'v-' + v));
+    if (SR.dirty[v]) renderView(v);
     if (v === 'lib' && !SR.browse && SR.state.hasSonos) doBrowse();
   }
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.v)));
@@ -270,7 +303,7 @@
         || `<option value="">${T('No Sonos device')}</option>`;
     });
   }
-  function onPick(e) { SR.current = e.target.value; renderPickers(); renderNow(); }
+  function onPick(e) { SR.current = e.target.value; renderPickers(); if (SR.view === 'now') renderNow(); else SR.dirty.now = true; }
   $('nowSel').addEventListener('change', onPick);
   document.querySelectorAll('select[data-target]').forEach((s) => s.addEventListener('change', onPick));
   function target() {
@@ -287,7 +320,7 @@
     if (!d) { $('nowBox').innerHTML = `<div class="empty">${T('No devices configured')}</div>`; return; }
     const lead = d.syncedTo && dev(d.syncedTo) ? dev(d.syncedTo) : d;
     const active = d.available && (lead.state === 'playing' || lead.state === 'paused');
-    let html = `<div class="np"><div class="cover">${coverSrc(lead.image) && d.available ? `<img src="${esc(coverSrc(lead.image))}" onerror="this.remove()">` : svg(d.kind === 'sonos' ? 'note' : 'speaker')}</div>
+    let html = `<div class="np"><div id="coverSlot"></div>
       <div class="meta"><div class="t">${esc(active && lead.title ? lead.title : d.name)}</div><div class="a">${esc(active && lead.title ? lead.artist : stateText(d))}</div></div>`;
     if (d.power === false) {
       html += `<button class="btn fill" data-power="1">${svg('power')}${T('Switch on')}</button>`;
@@ -296,6 +329,7 @@
       if (d.kind === 'sonos') html += '<div id="progSlot"></div>';
       if (d.caps.transport) {
         html += `<div class="ctrl">
+          ${d.kind === 'sonos' ? `<button class="ib sm" id="shufBtn" title="${T('Shuffle')}">${svg('shuffle')}</button>` : ''}
           <button class="ib" data-c="previous">${svg('prev')}</button>
           <button class="ib main" data-c="play_pause">${svg(lead.state === 'playing' ? 'pause' : 'play')}</button>
           <button class="ib" data-c="next">${svg('next')}</button>
@@ -312,9 +346,20 @@
     // Fortschrittsanzeige über den Neuaufbau hinweg behalten (sonst verschwindet sie bei jeder Aktualisierung)
     const prog = $('prog') || makeProgress();
     prog.remove();
+    const cover = SR.coverEl || (SR.coverEl = Object.assign(document.createElement('div'), { className: 'cover' }));
+    cover.remove();
     setKeepingImages($('nowBox'), html + '</div>');
     const slot = $('progSlot');
     if (slot) slot.replaceWith(prog);
+    $('coverSlot').replaceWith(cover);
+    setCover(d.available ? coverSrc(lead.image) : '', d.kind === 'sonos' ? 'note' : 'speaker');
+    const sb = $('shufBtn');
+    if (sb) sb.onclick = () => {
+      const on = !(SR.pos && /SHUFFLE/.test(SR.pos.mode || ''));
+      if (SR.pos) SR.pos.mode = on ? 'SHUFFLE_NOREPEAT' : 'NORMAL';
+      sb.classList.toggle('on', on);
+      send('shuffle', { id: d.id, value: on });
+    };
     bindControls($('nowBox'), d);
     const fn = $('nowBox').querySelector('[data-favnow]');
     if (fn) fn.onclick = () => send('favNow', { id: d.id });
@@ -322,6 +367,20 @@
     const key = d.id + '|' + lead.title + '|' + lead.artist;
     if (d.available && SR.posKey !== key) { SR.posKey = key; send('position', { id: d.id }); }
     paintProgress();
+  }
+
+  // Cover: das bisherige Bild bleibt stehen, bis das neue geladen ist (kein Aufblitzen/leeres Feld beim Wechsel)
+  function setCover(src, icon) {
+    const box = SR.coverEl;
+    if (!box) return;
+    const want = src || 'icon:' + icon;
+    if (want === SR.coverShown || want === SR.coverWant) return;
+    SR.coverWant = want;
+    if (!src) { box.innerHTML = svg(icon); SR.coverShown = want; return; }
+    const im = new Image();
+    im.onload = () => { if (SR.coverWant !== want) return; box.replaceChildren(im); SR.coverShown = want; };
+    im.onerror = () => { if (SR.coverWant !== want) return; box.innerHTML = svg(icon); SR.coverShown = want; };
+    im.src = src;
   }
 
   // ---------- Fortschritt im Titel ----------
@@ -353,6 +412,8 @@
     if (!box) return;
     const p = SR.pos;
     const d = dev(SR.current);
+    const sb = $('shufBtn');
+    if (sb) sb.classList.toggle('on', !!(p && d && p.id === d.id && /SHUFFLE/.test(p.mode || '')));
     const ok = p && d && p.id === d.id && d.available && p.dur > 0 && p.state !== 'STOPPED' && p.state !== 'NO_MEDIA_PRESENT';
     box.style.display = ok ? '' : 'none';
     if (!ok || SR.drag.seek) return;
@@ -499,7 +560,8 @@
         html += `<div class="slot"><span class="no">${i + 1}</span>${thumb(f.image, icon)}<div class="txt"><input value="${esc(f.name)}" data-rename="${i}" maxlength="80"></div>
           <button class="ib sm" data-move="-1" data-i="${i}" ${i === 0 ? 'disabled' : ''}>${svg('up')}</button><button class="ib sm" data-move="1" data-i="${i}" ${i === 19 ? 'disabled' : ''}>${svg('down')}</button><button class="ib sm" data-del="${i}" title="${T('Delete')}">${svg('del')}</button></div>`;
       } else {
-        html += `<div class="slot fill" data-play="${i}"><span class="no">${i + 1}</span>${thumb(f.image, icon)}<div class="txt"><div class="n">${esc(f.name)}</div><div class="s">${esc(f.sub)}</div></div><button class="ib sm">${svg('play')}</button></div>`;
+        const shuf = ['playlist', 'album'].includes(SR.favType) ? `<button class="ib sm" data-fshuf="${i}" title="${T('Play shuffled')}">${svg('shuffle')}</button>` : '';
+        html += `<div class="slot fill" data-play="${i}"><span class="no">${i + 1}</span>${thumb(f.image, icon)}<div class="txt"><div class="n">${esc(f.name)}</div><div class="s">${esc(f.sub)}</div></div>${shuf}<button class="ib sm">${svg('play')}</button></div>`;
       }
     }
     if (!list.some(Boolean)) html = `<div class="hint" style="padding:6px 0 10px">${T('Save favorites with the star in Library or Now playing.')}</div>` + html;
@@ -507,6 +569,12 @@
     $('favList').querySelectorAll('[data-play]').forEach((el) => el.onclick = () => {
       const id = target(); if (!id) return;
       send('playFav', { type: SR.favType, slot: +el.dataset.play, id });
+      toast(T('Starting …'));
+    });
+    $('favList').querySelectorAll('[data-fshuf]').forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const id = target(); if (!id) return;
+      send('playFav', { type: SR.favType, slot: +b.dataset.fshuf, id, shuffle: true });
       toast(T('Starting …'));
     });
     $('favList').querySelectorAll('[data-move]').forEach((b) => b.onclick = () => send('favMove', { type: SR.favType, slot: +b.dataset.i, dir: +b.dataset.move }));
@@ -538,8 +606,23 @@
     $('saveAs').innerHTML = `<option value="">${T('Automatic')}</option>` + Object.keys(TYPES).map((t) => `<option value="${t}" ${SR.saveAs === t ? 'selected' : ''}>${T(TYPES[t])}</option>`).join('');
   }
   $('saveAs').addEventListener('change', (e) => { SR.saveAs = e.target.value; });
+  // letzte 5 Suchanfragen je Bediengerät
+  function histGet() { try { const h = JSON.parse(load('sr-hist') || '[]'); return Array.isArray(h) ? h.slice(0, 5) : []; } catch (e) { return []; } }
+  function histAdd(q) {
+    const h = [q].concat(histGet().filter((x) => x.toLowerCase() !== q.toLowerCase())).slice(0, 5);
+    store('sr-hist', JSON.stringify(h));
+    renderHist();
+  }
+  function renderHist() {
+    const h = histGet();
+    $('histChips').style.display = h.length ? '' : 'none';
+    $('histChips').innerHTML = h.length ? `<span class="label">${T('Recent')}</span>` + h.map((x, i) => `<button class="chip" data-h="${i}" title="${esc(x)}">${esc(x)}</button>`).join('') : '';
+    $('histChips').querySelectorAll('[data-h]').forEach((c) => c.onclick = () => { $('q').value = h[+c.dataset.h]; doBrowse(); });
+  }
   function doBrowse(extra) {
     if (!SR.state.hasSonos) { $('results').innerHTML = `<div class="empty">${T('No Sonos device configured')}</div>`; return; }
+    const q = $('q').value.trim();
+    if (!extra && q) histAdd(q);
     $('q').blur();
     $('results').innerHTML = `<div class="empty">${T('Loading …')}</div>`;
     send('browse', Object.assign({ source: SR.source, query: $('q').value.trim(), cat: SR.cat[SR.source] || '' }, extra || {}));
@@ -559,14 +642,15 @@
       const icon = it.open && !canPlay ? 'folder' : (ICON[it.type] || 'note');
       html += `<div class="item" data-idx="${it.idx}" data-act="${it.open ? 'open' : 'play'}">${thumb(it.image, icon)}<div class="txt"><div class="n">${esc(it.name)}</div><div class="s">${esc(it.sub)}</div></div>
         ${canPlay ? `<span class="tag">${T(TYPES[it.type] || it.type)}</span>
-        <button class="ib sm ${fav ? 'on' : ''}" data-fav="${it.idx}" title="${T('Save as favorite')}">${svg(fav ? 'star' : 'starO')}</button><button class="ib sm" data-play="${it.idx}">${svg('play')}</button>` : ''}
+        <button class="ib sm ${fav ? 'on' : ''}" data-fav="${it.idx}" title="${T('Save as favorite')}">${svg(fav ? 'star' : 'starO')}</button>${['album', 'playlist'].includes(it.type) ? `<button class="ib sm" data-shuf="${it.idx}" title="${T('Play shuffled')}">${svg('shuffle')}</button>` : ''}<button class="ib sm" data-play="${it.idx}">${svg('play')}</button>` : ''}
         ${it.open ? `<button class="ib sm" data-open="${it.idx}">${svg('open')}</button>` : ''}</div>`;
     });
     if (msg.total > items.length && items.length) html += `<div class="hint" style="padding:8px">${items.length} / ${msg.total} – ${T('narrow down with the search')}</div>`;
     $('results').innerHTML = html;
     const bk = $('results').querySelector('[data-back]');
     if (bk) bk.onclick = () => doBrowse({ back: true });
-    const play = (idx) => { const id = target(); if (!id) return; send('playBrowse', { idx, id }); toast(T('Starting …')); };
+    const play = (idx, shuffle) => { const id = target(); if (!id) return; send('playBrowse', { idx, id, shuffle: !!shuffle }); toast(T('Starting …')); };
+    $('results').querySelectorAll('[data-shuf]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); play(+b.dataset.shuf, true); });
     $('results').querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send('favAddBrowse', { idx: +b.dataset.fav, type: SR.saveAs }); });
     $('results').querySelectorAll('[data-play]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); play(+b.dataset.play); });
     $('results').querySelectorAll('.item').forEach((el) => el.onclick = () => {
@@ -596,12 +680,13 @@
         { const keep = new Set(SR.state.devices.map((d) => String(d.image || '').slice(6))); Object.keys(SR.covers).forEach((h) => { if (!keep.has(h)) delete SR.covers[h]; }); }
         if (dragging()) { SR.pending = true; return; }   // Regler wird gerade bewegt – danach nachholen
         SR.pending = false;
-        renderPickers(); renderNow(); renderDevices(); renderFavs();
+        renderVisible();
         { const sig = JSON.stringify(msg.state.services || []); if (!$('srcChips').innerHTML || sig !== SR.svcSig) { SR.svcSig = sig; renderLibChrome(); } }
+        if (SR.view === 'lib' && !SR.browse && SR.state.hasSonos) doBrowse();
         break;
       case 'favs':
         SR.state.favs = msg.favs;
-        renderFavs();
+        if (SR.view === 'favs') renderFavs(); else SR.dirty.favs = true;
         if (SR.browse) renderBrowse(SR.browse);
         break;
       case 'browse':
@@ -609,11 +694,11 @@
         break;
       case 'cover':
         SR.covers[msg.hash] = msg.data;
-        if (SR.state.devices.length) { renderNow(); renderDevices(); }
+        if (SR.state.devices.length) renderVisible();
         break;
       case 'pos': {
         const st = String(msg.state || '');
-        SR.pos = { id: msg.id, pos: msg.pos, dur: msg.dur, state: st, at: Date.now(), playing: st === 'PLAYING' || st === 'TRANSITIONING' };
+        SR.pos = { id: msg.id, pos: msg.pos, dur: msg.dur, state: st, mode: String(msg.mode || ''), at: Date.now(), playing: st === 'PLAYING' || st === 'TRANSITIONING' };
         paintProgress();
         break;
       }
@@ -626,4 +711,6 @@
   document.querySelectorAll('.nav span, .pick .label').forEach((el) => { el.textContent = T(el.textContent); });
   $('q').placeholder = T($('q').placeholder);
   renderAll();
+  renderHist();
+  show(load('sr-view') || 'now');
 </script>

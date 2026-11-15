@@ -66,6 +66,18 @@ class SonosUPnP
         ]);
     }
 
+    /** Wiedergabemodus: NORMAL, REPEAT_ALL, REPEAT_ONE, SHUFFLE_NOREPEAT, SHUFFLE, SHUFFLE_REPEAT_ONE */
+    public function GetPlayMode(): string
+    {
+        $r = (array) $this->call(self::AVT, 'GetTransportSettings', [new SoapParam('0', 'InstanceID')]);
+        return (string) ($r['PlayMode'] ?? 'NORMAL');
+    }
+
+    public function SetPlayMode(string $Mode): void
+    {
+        $this->call(self::AVT, 'SetPlayMode', [new SoapParam('0', 'InstanceID'), new SoapParam($Mode, 'NewPlayMode')]);
+    }
+
     public function GetTransportInfo(): array
     {
         return (array) $this->call(self::AVT, 'GetTransportInfo', [new SoapParam('0', 'InstanceID')]);
