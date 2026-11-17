@@ -44,7 +44,13 @@
   .meta { text-align: center; width: 100%; min-width: 0; }
   .meta .t { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .meta .a { color: var(--sr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ctrl { display: flex; gap: 18px; align-items: center; justify-content: center; }
+  /* Tastenreihe als Raster mit festen Plätzen: Play steht immer in der Mitte der Kachel, auch wenn Zufall oder Favorit fehlen */
+  .ctrl { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr); gap: 18px; align-items: center; width: 100%; }
+  .ctrl #shufBtn { grid-column: 1; justify-self: end; }
+  .ctrl [data-c="previous"] { grid-column: 2; }
+  .ctrl [data-c="play_pause"] { grid-column: 3; }
+  .ctrl [data-c="next"] { grid-column: 4; }
+  .ctrl [data-favnow] { grid-column: 5; justify-self: start; }
   .ib { border: 0; background: none; cursor: pointer; width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; padding: 0; flex: none; }
   .ib:hover { background: var(--sr-bg2); }
   .ib:disabled { opacity: .35; cursor: default; }
