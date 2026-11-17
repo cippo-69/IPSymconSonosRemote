@@ -109,5 +109,9 @@ welche Bedienelemente die Kachel zeigt; mit `media = true` erscheint das Gerät 
   und reine Video-Podcasts lassen sich nicht abspielen.
 - Cover-Bilder lokaler Musik kommen direkt vom Sonos-Gerät (`http://<ip>:1400/…`) und sind nur im lokalen Netz sichtbar.
 
+## Farben
+
+Die Kachel hat keine eigenen Farbeinstellungen. Die Farben kommen aus dem Modul [Visu Design](https://github.com/cippo-69/IPSymconVisuDesign) (CSS-Variablen `--w5-*`, heller Modus und Dark Mode). Ohne Design-Instanz gilt das Farbkonzept W5x.
+
 ## Lizenz
 MIT

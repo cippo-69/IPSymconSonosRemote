@@ -124,11 +124,7 @@
             "minimum": 10,
             "maximum": 500
         },
-        {
-            "type": "SelectColor",
-            "name": "AccentColor",
-            "caption": "Accent color"
-        }
+        { "type": "Label", "caption": "Farben: zentral im Modul „Visu Design“ (Farbkonzept W5x)." }
     ],
     "actions": [
         {

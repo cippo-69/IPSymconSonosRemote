@@ -1,7 +1,5 @@
 <style>
   :root {
-    --sr-accent: #2F6B4F;    /* Tannengrün (Farbkonzept W5x) */
-    --sr-on: #fff;           /* Schrift auf Akzentfläche */
     --sr-bg: rgba(127,127,127,.07);
     --sr-bg2: rgba(127,127,127,.14);
     --sr-line: rgba(127,127,127,.22);
@@ -10,7 +8,9 @@
     --sr-nav: 58px;
   }
   /* Dark Mode der Visu (erkannt an der hellen Schriftfarbe, wie in den anderen W5x-Kacheln) */
-  body.dark { --sr-accent: #74B892; --sr-on: #1E2224; }
+  /* Farben aus dem Modul „Visu Design“ (--w5-*); die Werte nach dem Komma gelten ohne Design-Instanz */
+  body { --sr-accent: var(--w5-accent, #2F6B4F); --sr-on: var(--w5-on, #fff); }
+  body.dark { --sr-accent: var(--w5-accent, #74B892); --sr-on: var(--w5-on, #1E2224); }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; }
   body { font-family: 'Poppins', 'Work Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.35; }

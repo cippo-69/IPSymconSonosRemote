@@ -34,7 +34,6 @@ class SonosRemote extends IPSModuleStrict
 
         $this->RegisterPropertyString('Devices', '[]');
         $this->RegisterPropertyInteger('BrowseLimit', 100);
-        $this->RegisterPropertyInteger('AccentColor', 0x1DB954);
 
         $this->RegisterAttributeString('Favorites', '{}');
         $this->RegisterAttributeString('Watched', '[]');
@@ -96,6 +95,21 @@ class SonosRemote extends IPSModuleStrict
         $this->PushFull();
     }
 
+    /** Farben aus dem Modul „Visu Design“ (W5D); ohne Instanz gelten die Vorgaben im module.html. */
+    private function DesignStyle(): string
+    {
+        $guid = '{018EEC85-8FFC-4E1F-A966-702C4BBDC2E8}';
+        if (!IPS_ModuleExists($guid) || !function_exists('W5D_GetCSS')) {
+            return '';
+        }
+        $ids = IPS_GetInstanceListByModuleID($guid);
+        if (count($ids) === 0) {
+            return '';
+        }
+        sort($ids);
+        return '<style>' . W5D_GetCSS($ids[0]) . '</style>';
+    }
+
     public function GetVisualizationTile(): string
     {
         $state = $this->BuildState();
@@ -111,10 +125,9 @@ class SonosRemote extends IPSModuleStrict
             }
         }
         $initial .= '<script>handleMessage(' . json_encode(json_encode(['type' => 'full', 'state' => $state])) . ');</script>';
-        $accent = sprintf('#%06X', $this->ReadPropertyInteger('AccentColor') & 0xFFFFFF);
         // Version des Kachel-Codes: veraltete (zwischengespeicherte) Kacheln laden sich damit selbst neu
         $ver = '<script>SR.htmlVersion = ' . json_encode($this->HtmlVersion()) . ';</script>';
-        return file_get_contents(__DIR__ . '/module.html') . '<style>:root{--sr-accent:' . $accent . ';}</style>' . $ver . $initial;
+        return $this->DesignStyle() . file_get_contents(__DIR__ . '/module.html') . $ver . $initial;
     }
 
     private function HtmlVersion(): string
