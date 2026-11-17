@@ -144,6 +144,17 @@
     .np > * { grid-column: 1 / -1; }
     .nav button span { display: none; }
   }
+  /* kleine Kachel (< 300 px Höhe, wie die anderen W5x-Kacheln): nur Titel, Zurück/Play/Weiter und Lautstärke */
+  body.compact #sr { flex-direction: column; }
+  body.compact .nav, body.compact .view:not(#v-now), body.compact #v-now .pick, body.compact .np > .cover, body.compact #prog,
+  body.compact #shufBtn, body.compact [data-favnow], body.compact [data-airplay], body.compact .np > .btn:not(.fill), body.compact .tone { display: none !important; }
+  body.compact #v-now { display: block !important; padding: 0 12px 8px; }
+  body.compact .np { display: flex !important; flex-direction: column; align-items: center; gap: 6px; padding-top: 0; }
+  body.compact .np > * { grid-column: auto; }
+  body.compact .meta .t { font-size: 15px; }
+  body.compact .meta .a { font-size: 12px; }
+  body.compact .ctrl { gap: 14px; }
+  body.compact .ib.main { width: 48px; height: 48px; font-size: 22px; }
 </style>
 
 <div id="sr">
@@ -669,7 +680,9 @@
     const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(document.body).color || '');
     const dark = m ? (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 > 0.5 : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
     document.body.classList.toggle('dark', dark);
+    document.body.classList.toggle('compact', window.innerHeight < 300);
   }
+  window.addEventListener('resize', srTheme);
   function handleMessage(data) {
     srTheme();
     const msg = typeof data === 'string' ? JSON.parse(data) : data;
