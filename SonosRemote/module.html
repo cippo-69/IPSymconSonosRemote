@@ -689,12 +689,21 @@
     document.body.classList.toggle('compact', window.innerHeight < 300);
   }
   window.addEventListener('resize', srTheme);
+  /* Farben aus „Visu Design“ live übernehmen (Element #w5d), auch wenn die Visu die Kachel zwischengespeichert hat */
+  function design(css) {
+    if (typeof css !== 'string') return;
+    var st = document.getElementById('w5d');
+    if (!st) { st = document.createElement('style'); st.id = 'w5d'; (document.head || document.body).appendChild(st); }
+    if (st.textContent !== css) st.textContent = css;
+  }
+
   function handleMessage(data) {
     srTheme();
     const msg = typeof data === 'string' ? JSON.parse(data) : data;
     switch (msg.type) {
       case 'full':
         SR.state = msg.state;
+        design(msg.state.design);
         // Kachel-Code veraltet (Modul wurde aktualisiert, Visualisierung hat noch die alte Kachel): einmal neu laden
         if (msg.state.htmlVersion && SR.htmlVersion && msg.state.htmlVersion !== SR.htmlVersion) {
           let done = '';
